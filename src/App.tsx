@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry } from './solar/engine';
-import { VIEWS } from './solar/data';
+import { VIEWS, DOSSIER } from './solar/data';
 import { STR } from './solar/i18n';
 import type { Lang } from './solar/i18n';
 
@@ -23,7 +23,8 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
-  const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0 });
+  const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null });
+  const [dossierOpen, setDossierOpen] = useState(true);
   const [hudOn, setHudOn] = useState(true);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [introGone, setIntroGone] = useState(false);
@@ -98,6 +99,8 @@ export default function App() {
         case 'p': setParamsOpen(v => !v); break;
         case 'm': eng.toggleSound(); break;
         case 'h': setHudOn(v => !v); break;
+        case 'e': eng.toggleEphemeris(); break;
+        case 'd': setDossierOpen(v => !v); break;
         case 'escape': eng.clearFocus(); break;
       }
     };
@@ -105,8 +108,15 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // auto-open dossier when a new target is acquired
+  const focusId = snap?.focusId ?? 'sun';
+  useEffect(() => {
+    if (focusId !== 'sun') setDossierOpen(true);
+  }, [focusId]);
+
   const eng = () => engineRef.current;
   const p = snap?.params ?? { speed: 1, orbitOpacity: 0.55, planetScale: 1, starfield: 0.9 };
+  const dossier = focusId !== 'sun' ? DOSSIER[focusId] : undefined;
 
   return (
     <>
@@ -161,6 +171,9 @@ export default function App() {
           <button className={`hbtn wide ${snap?.sound ? 'active' : ''}`} onClick={() => eng()?.toggleSound()}>
             {snap?.sound ? t.soundOn : t.soundOff}
           </button>
+          <button className={`hbtn wide ${snap?.ephemeris ? 'active' : ''}`} onClick={() => eng()?.toggleEphemeris()}>
+            🛰 {t.ephemeris}{snap?.ephemeris ? t.ephemOn : t.ephemOff}
+          </button>
           <button className="hbtn wide" onClick={() => setLang(l => (l === 'zh' ? 'en' : 'zh'))}>
             {t.langButton}
           </button>
@@ -198,6 +211,36 @@ export default function App() {
             onChange={e => eng()?.setParam('starfield', Number(e.target.value))} />
         </div>
       </div>
+
+      {dossier && dossierOpen && (
+        <div id="dossier" className="ctl">
+          <div className="p-head">
+            <span className="p-title">{snap?.focusName} · {t.dossier}</span>
+            <button id="btn-reset" className="hbtn" onClick={() => setDossierOpen(false)}>{t.dossierClose}</button>
+          </div>
+          <div className="d-type">{lang === 'zh' ? dossier.typeCn : dossier.type}</div>
+          {dossier.diameterKm != null && (
+            <div className="d-block">
+              <div className="d-meta">
+                <span>{t.diameter}</span>
+                <span className="p-val">{dossier.diameterKm.toLocaleString()} KM</span>
+              </div>
+              <div className="d-bar-track">
+                <div className="d-bar" style={{ width: `${Math.max(4, (Math.log10(dossier.diameterKm) - Math.log10(2000)) / (Math.log10(140000) - Math.log10(2000)) * 100)}%` }} />
+                <div className="d-earth-marker" style={{ left: `${(Math.log10(12742) - Math.log10(2000)) / (Math.log10(140000) - Math.log10(2000)) * 100}%` }} title="EARTH" />
+              </div>
+              <div className="d-caption">{t.vsEarth}</div>
+            </div>
+          )}
+          {tel.focusAU != null && (
+            <div className="d-row highlight"><span>{t.rangeNow}</span><span className="p-val">{tel.focusAU.toFixed(1)} AU</span></div>
+          )}
+          {dossier.rows.map(r => (
+            <div className="d-row" key={r.k}><span>{lang === 'zh' ? r.kCn : r.k}</span><span className="p-val">{lang === 'zh' ? r.vCn : r.v}</span></div>
+          ))}
+          <div className="d-blurb">{lang === 'zh' ? dossier.blurbCn : dossier.blurb}</div>
+        </div>
+      )}
 
       {!introGone && (
         <div id="intro" className={introFading ? 'done' : ''}>

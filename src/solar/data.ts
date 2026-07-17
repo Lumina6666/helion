@@ -137,3 +137,184 @@ export const VIEWS: ViewSpec[] = [
 ];
 
 export const INTRO_QUOTE = '“The cosmos is within us. We are made of star-stuff.” — Carl Sagan';
+
+// ------------------------------------------------------------ small bodies
+// Pseudo-specs so comet & probes share focus / telemetry / dossier plumbing.
+export const HALLEY_SPEC: PlanetSpec = {
+  id: 'halley', name: 'HALLEY', cn: '哈雷彗星',
+  radius: 0.45, distance: 51.5, inclination: 0, tiltDeg: 0, spin: 1,
+  tex: 'pluto', color: '#9fd8ff',
+  fact: '1P/HALLEY · 75.3 YR · NEXT PERIHELION 2061-07',
+  factCn: '1P/哈雷彗星 · 周期 75.3 年 · 下次近日点 2061 年 7 月',
+};
+
+export const VOYAGER_SPECS: PlanetSpec[] = [
+  {
+    id: 'voyager1', name: 'VOYAGER 1', cn: '旅行者 1 号',
+    radius: 0.4, distance: 110, inclination: 0, tiltDeg: 0, spin: 0.5,
+    tex: 'mercury', color: '#ffd28a',
+    fact: 'LAUNCHED 1977 · INTERSTELLAR SPACE · 17.0 KM/S',
+    factCn: '1977 年发射 · 星际空间 · 速度 17.0 千米/秒',
+  },
+  {
+    id: 'voyager2', name: 'VOYAGER 2', cn: '旅行者 2 号',
+    radius: 0.4, distance: 106, inclination: 0, tiltDeg: 0, spin: 0.5,
+    tex: 'mercury', color: '#ffd28a',
+    fact: 'LAUNCHED 1977 · ONLY CRAFT TO VISIT URANUS & NEPTUNE',
+    factCn: '1977 年发射 · 唯一造访天王星与海王星的探测器',
+  },
+];
+
+// ------------------------------------------------------------ dossier data
+export interface DossierRow { k: string; kCn: string; v: string; vCn: string }
+export interface Dossier {
+  type: string; typeCn: string;
+  diameterKm: number | null;   // null → no size bar (probes)
+  blurb: string; blurbCn: string;
+  rows: DossierRow[];
+}
+
+export const DOSSIER: Record<string, Dossier> = {
+  mercury: {
+    type: 'ROCKY PLANET', typeCn: '岩质行星', diameterKm: 4879,
+    blurb: 'The swift planet — a year lasts 88 days, but a single solar day lasts 176 Earth days.',
+    blurbCn: '最靠近太阳的行星——公转一年只要 88 天，但一个昼夜却长达 176 个地球日。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.055 M⊕', vCn: '0.055 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '58.6 DAYS', vCn: '58.6 天' },
+      { k: 'YEAR', kCn: '公转周期', v: '88 DAYS', vCn: '88 天' },
+      { k: 'MOONS', kCn: '卫星', v: '0', vCn: '0' },
+      { k: 'TEMP RANGE', kCn: '温度范围', v: '−173 ~ 427 °C', vCn: '−173 ~ 427 °C' },
+    ],
+  },
+  venus: {
+    type: 'ROCKY PLANET', typeCn: '岩质行星', diameterKm: 12104,
+    blurb: 'Spins backwards and slower than its year — on Venus the Sun rises in the west.',
+    blurbCn: '自转方向与公转相反且比一年还慢——在金星上，太阳从西边升起。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.815 M⊕', vCn: '0.815 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '243 DAYS ↺', vCn: '243 天（逆向）' },
+      { k: 'YEAR', kCn: '公转周期', v: '225 DAYS', vCn: '225 天' },
+      { k: 'MOONS', kCn: '卫星', v: '0', vCn: '0' },
+      { k: 'MEAN TEMP', kCn: '平均温度', v: '464 °C', vCn: '464 °C' },
+    ],
+  },
+  earth: {
+    type: 'ROCKY PLANET', typeCn: '岩质行星', diameterKm: 12742,
+    blurb: 'The only known world with liquid-water oceans — and life.',
+    blurbCn: '已知唯一拥有液态水海洋——以及生命的行星。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '5.97×10²⁴ KG', vCn: '5.97×10²⁴ 千克' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '23.9 HOURS', vCn: '23.9 小时' },
+      { k: 'YEAR', kCn: '公转周期', v: '365.25 DAYS', vCn: '365.25 天' },
+      { k: 'MOONS', kCn: '卫星', v: '1', vCn: '1' },
+      { k: 'MEAN TEMP', kCn: '平均温度', v: '15 °C', vCn: '15 °C' },
+    ],
+  },
+  mars: {
+    type: 'ROCKY PLANET', typeCn: '岩质行星', diameterKm: 6779,
+    blurb: 'Home of Olympus Mons, a volcano nearly three times the height of Everest.',
+    blurbCn: '拥有奥林帕斯山——高度接近珠穆朗玛峰三倍的巨型火山。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.107 M⊕', vCn: '0.107 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '24.6 HOURS', vCn: '24.6 小时' },
+      { k: 'YEAR', kCn: '公转周期', v: '687 DAYS', vCn: '687 天' },
+      { k: 'MOONS', kCn: '卫星', v: '2', vCn: '2' },
+      { k: 'MEAN TEMP', kCn: '平均温度', v: '−63 °C', vCn: '−63 °C' },
+    ],
+  },
+  jupiter: {
+    type: 'GAS GIANT', typeCn: '气态巨行星', diameterKm: 139820,
+    blurb: 'More massive than all other planets combined; the Great Red Spot is a storm larger than Earth.',
+    blurbCn: '质量超过其他行星总和；大红斑是一场比地球还大的风暴。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '317.8 M⊕', vCn: '317.8 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '9.9 HOURS', vCn: '9.9 小时' },
+      { k: 'YEAR', kCn: '公转周期', v: '11.86 YEARS', vCn: '11.86 年' },
+      { k: 'MOONS', kCn: '卫星', v: '95', vCn: '95' },
+      { k: 'CLOUD TOP', kCn: '云顶温度', v: '−108 °C', vCn: '−108 °C' },
+    ],
+  },
+  saturn: {
+    type: 'GAS GIANT', typeCn: '气态巨行星', diameterKm: 116460,
+    blurb: 'Its rings span 280,000 km yet are only about ten metres thick in places.',
+    blurbCn: '光环宽达 28 万千米，局部厚度却只有十米左右。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '95.2 M⊕', vCn: '95.2 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '10.7 HOURS', vCn: '10.7 小时' },
+      { k: 'YEAR', kCn: '公转周期', v: '29.45 YEARS', vCn: '29.45 年' },
+      { k: 'MOONS', kCn: '卫星', v: '274', vCn: '274' },
+      { k: 'CLOUD TOP', kCn: '云顶温度', v: '−139 °C', vCn: '−139 °C' },
+    ],
+  },
+  uranus: {
+    type: 'ICE GIANT', typeCn: '冰巨星', diameterKm: 50724,
+    blurb: 'Rolls around the Sun on its side — its axis is tipped 98 degrees.',
+    blurbCn: '躺在轨道上公转——自转轴倾角高达 98 度。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '14.5 M⊕', vCn: '14.5 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '17.2 HOURS ↺', vCn: '17.2 小时（逆向）' },
+      { k: 'YEAR', kCn: '公转周期', v: '84 YEARS', vCn: '84 年' },
+      { k: 'MOONS', kCn: '卫星', v: '28', vCn: '28' },
+      { k: 'CLOUD TOP', kCn: '云顶温度', v: '−197 °C', vCn: '−197 °C' },
+    ],
+  },
+  neptune: {
+    type: 'ICE GIANT', typeCn: '冰巨星', diameterKm: 49244,
+    blurb: 'Supersonic winds up to 2,100 km/h — the fastest in the solar system.',
+    blurbCn: '超音速风暴可达 2,100 千米/时——太阳系最快的风。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '17.1 M⊕', vCn: '17.1 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '16.1 HOURS', vCn: '16.1 小时' },
+      { k: 'YEAR', kCn: '公转周期', v: '164.8 YEARS', vCn: '164.8 年' },
+      { k: 'MOONS', kCn: '卫星', v: '16', vCn: '16' },
+      { k: 'CLOUD TOP', kCn: '云顶温度', v: '−201 °C', vCn: '−201 °C' },
+    ],
+  },
+  pluto: {
+    type: 'DWARF PLANET', typeCn: '矮行星', diameterKm: 2376,
+    blurb: 'Has a heart-shaped glacier the size of Texas — Tombaugh Regio.',
+    blurbCn: '拥有一块得克萨斯州大小的心形冰川——汤博区。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.002 M⊕', vCn: '0.002 地球质量' },
+      { k: 'DAY LENGTH', kCn: '自转周期', v: '6.4 DAYS', vCn: '6.4 天' },
+      { k: 'YEAR', kCn: '公转周期', v: '248 YEARS', vCn: '248 年' },
+      { k: 'MOONS', kCn: '卫星', v: '5', vCn: '5' },
+      { k: 'MEAN TEMP', kCn: '平均温度', v: '−229 °C', vCn: '−229 °C' },
+    ],
+  },
+  halley: {
+    type: 'PERIODIC COMET', typeCn: '周期彗星', diameterKm: 15,
+    blurb: 'Returns every ~75 years; last seen 1986, next perihelion July 2061. Mark Twain was born and died with its visits.',
+    blurbCn: '每约 75 年回归一次；上次出现为 1986 年，下次近日点在 2061 年 7 月。马克·吐温生卒皆逢其回归。',
+    rows: [
+      { k: 'NUCLEUS', kCn: '彗核', v: '15 × 8 KM', vCn: '15 × 8 千米' },
+      { k: 'PERIOD', kCn: '周期', v: '75.3 YEARS', vCn: '75.3 年' },
+      { k: 'PERIHELION', kCn: '近日点', v: '0.586 AU', vCn: '0.586 AU' },
+      { k: 'APHELION', kCn: '远日点', v: '35.1 AU', vCn: '35.1 AU' },
+      { k: 'MOTION', kCn: '运动方向', v: 'RETROGRADE', vCn: '逆行' },
+    ],
+  },
+  voyager1: {
+    type: 'DEEP-SPACE PROBE', typeCn: '深空探测器', diameterKm: null,
+    blurb: 'The most distant human-made object — crossed into interstellar space in 2012, still whispering home.',
+    blurbCn: '飞得最远的人造物体——2012 年进入星际空间，至今仍在向地球传回信号。',
+    rows: [
+      { k: 'LAUNCHED', kCn: '发射时间', v: '1977-09-05', vCn: '1977 年 9 月 5 日' },
+      { k: 'SPEED', kCn: '速度', v: '17.0 KM/S', vCn: '17.0 千米/秒' },
+      { k: 'STATUS', kCn: '状态', v: 'INTERSTELLAR', vCn: '星际空间' },
+      { k: 'POWER UNTIL', kCn: '供电至约', v: '~2032', vCn: '约 2032 年' },
+    ],
+  },
+  voyager2: {
+    type: 'DEEP-SPACE PROBE', typeCn: '深空探测器', diameterKm: null,
+    blurb: 'The grand tour — the only spacecraft to have visited Jupiter, Saturn, Uranus and Neptune.',
+    blurbCn: '伟大的旅程——唯一先后造访木星、土星、天王星和海王星的探测器。',
+    rows: [
+      { k: 'LAUNCHED', kCn: '发射时间', v: '1977-08-20', vCn: '1977 年 8 月 20 日' },
+      { k: 'SPEED', kCn: '速度', v: '15.4 KM/S', vCn: '15.4 千米/秒' },
+      { k: 'STATUS', kCn: '状态', v: 'INTERSTELLAR', vCn: '星际空间' },
+      { k: 'GRAND TOUR', kCn: '造访行星', v: '4 GIANTS', vCn: '4 颗巨行星' },
+    ],
+  },
+};

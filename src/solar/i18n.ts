@@ -34,6 +34,14 @@ export interface Strings {
   introQuote: string;
   langButton: string;
   sun: string;
+  ephemeris: string;
+  ephemOn: string;
+  ephemOff: string;
+  dossier: string;
+  dossierClose: string;
+  diameter: string;
+  vsEarth: string;
+  rangeNow: string;
   toast: {
     cineOn: string;
     cineOff: string;
@@ -47,6 +55,8 @@ export interface Strings {
     acquiring: string;    // + planet name
     released: string;
     reset: string;
+    ephemOn: string;
+    ephemOff: string;
   };
 }
 
@@ -72,7 +82,7 @@ export const STR: Record<Lang, Strings> = {
     hud: 'HUD',
     soundOn: '🔊 SOUND: ON',
     soundOff: '🔇 SOUND: OFF',
-    deckHint: '1-4 VIEWS · C CINE · R ORBIT · L LABELS · P PARAMS · M SOUND · H HUD · ESC RELEASE',
+    deckHint: '1-4 VIEWS · C CINE · R ORBIT · L LABELS · P PARAMS · M SOUND · E EPHEM · D DOSSIER · H HUD',
     bottomHint: 'DRAG ORBIT · SCROLL ZOOM · CLICK PLANET TO FOCUS · C CINEMATIC · M SOUND · H HUD',
     parameters: 'PARAMETERS',
     reset: 'RESET',
@@ -84,6 +94,14 @@ export const STR: Record<Lang, Strings> = {
     introQuote: '“The cosmos is within us. We are made of star-stuff.” — Carl Sagan',
     langButton: '🌐 界面语言: EN',
     sun: 'SUN',
+    ephemeris: 'EPHEMERIS: ',
+    ephemOn: 'ON',
+    ephemOff: 'OFF',
+    dossier: 'DOSSIER',
+    dossierClose: 'CLOSE',
+    diameter: 'DIAMETER',
+    vsEarth: 'VS EARTH · LOG SCALE',
+    rangeNow: 'RANGE NOW',
     toast: {
       cineOn: 'CINEMATIC SEQUENCE — ENGAGED',
       cineOff: 'MANUAL CONTROL',
@@ -97,6 +115,8 @@ export const STR: Record<Lang, Strings> = {
       acquiring: 'ACQUIRING TARGET — ',
       released: 'TARGET RELEASED — RETURN TO SOL',
       reset: 'PARAMETERS RESET',
+      ephemOn: 'REAL EPHEMERIS — TRUE LONGITUDES',
+      ephemOff: 'SIMPLIFIED ORBITS',
     },
   },
   zh: {
@@ -120,7 +140,7 @@ export const STR: Record<Lang, Strings> = {
     hud: '界面',
     soundOn: '🔊 音效: 开',
     soundOff: '🔇 音效: 关',
-    deckHint: '1-4 视角 · C 运镜 · R 环绕 · L 标签 · P 参数 · M 音效 · H 界面 · ESC 释放',
+    deckHint: '1-4 视角 · C 运镜 · R 环绕 · L 标签 · P 参数 · M 音效 · E 星历 · D 档案 · H 界面',
     bottomHint: '拖拽旋转 · 滚轮缩放 · 点击行星聚焦 · C 电影运镜 · M 音效 · H 界面',
     parameters: '参数设置',
     reset: '重置',
@@ -132,6 +152,14 @@ export const STR: Record<Lang, Strings> = {
     introQuote: '“宇宙就在我们之中，我们由星尘构成。” — 卡尔·萨根',
     langButton: '🌐 界面语言: 中文',
     sun: '太阳',
+    ephemeris: '星历: ',
+    ephemOn: '开',
+    ephemOff: '关',
+    dossier: '档案',
+    dossierClose: '关闭',
+    diameter: '直径',
+    vsEarth: '与地球对比 · 对数比例',
+    rangeNow: '当前距离',
     toast: {
       cineOn: '电影运镜 — 已启动',
       cineOff: '手动控制',
@@ -145,6 +173,8 @@ export const STR: Record<Lang, Strings> = {
       acquiring: '目标锁定 — ',
       released: '目标已释放 — 返回太阳',
       reset: '参数已重置',
+      ephemOn: '真实星历 — 行星切换到真实黄经位置',
+      ephemOff: '简化轨道模式',
     },
   },
 };

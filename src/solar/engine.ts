@@ -3,20 +3,24 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
-  keplerPeriod, CINE_SHOTS, VIEWS,
+  keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
 } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite } from './textures';
 import { Ambience } from './audio';
 import { STR } from './i18n';
 import type { Lang } from './i18n';
+import { BASE_JD, helioLonLat, halleyScenePos, VOYAGERS, voyagerAU, voyagerScenePos } from './ephem';
+import type { VoyagerSpec } from './ephem';
 
 export interface HudSnapshot {
   cine: boolean;
   orbit: boolean;
   labels: boolean;
   sound: boolean;
+  ephemeris: boolean;
   shotName: string;
+  focusId: string;
   focusName: string;
   focusFact: string;
   viewName: string;
@@ -28,6 +32,7 @@ export interface Telemetry {
   distAU: number;
   flow: number;
   simDays: number;
+  focusAU: number | null;
 }
 
 const BASE_DATE = Date.UTC(2026, 6, 17);
@@ -72,6 +77,9 @@ export class SolarEngine {
   private sun!: THREE.Mesh;
   private moon?: { pivot: THREE.Group; mesh: THREE.Mesh };
   private earthNode?: PlanetNode;
+  private ephemOn = false;
+  private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[] };
+  private voyagers: { node: PlanetNode; v: VoyagerSpec; lastAu: number }[] = [];
 
   private raf = 0;
   private disposed = false;
@@ -194,6 +202,108 @@ export class SolarEngine {
       this.earthNode.body.add(pivot);
       this.moon = { pivot, mesh };
     }
+
+    // Halley's comet — stylized elliptical orbit, particle tail, fading trail
+    this.buildHalley();
+
+    // Voyager 1 & 2 — escaping the system
+    for (const v of VOYAGERS) this.buildVoyager(v);
+  }
+
+  private makeLabel(spec: PlanetSpec): HTMLElement {
+    const label = document.createElement('div');
+    label.className = 'p-label';
+    label.textContent = this.lang === 'zh' ? spec.cn : spec.name;
+    label.style.color = spec.color;
+    this.labelLayer.appendChild(label);
+    return label;
+  }
+
+  private buildHalley() {
+    const spec = HALLEY_SPEC;
+    const pivot = new THREE.Group();
+    this.scene.add(pivot);
+    const body = new THREE.Group();
+    pivot.add(body);
+
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(spec.radius, 24, 18),
+      new THREE.MeshStandardMaterial({ map: planetTexture('pluto'), roughness: 1 }),
+    );
+    mesh.userData.planetId = spec.id;
+    body.add(mesh);
+    this.pickMeshes.push(mesh);
+
+    // icy coma glow
+    const coma = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite('rgba(210,240,255,0.95)', 'rgba(140,200,255,0.35)'),
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9,
+    }));
+    coma.scale.setScalar(2.2);
+    body.add(coma);
+
+    // tail: particle fan pointing anti-sun, updated per frame
+    const NT = 90;
+    const tGeo = new THREE.BufferGeometry();
+    tGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NT * 3), 3));
+    const tail = new THREE.Points(tGeo, new THREE.PointsMaterial({
+      color: 0xbfe4ff, size: 0.34, transparent: true, opacity: 0.8,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.scene.add(tail);
+
+    // trail of recent positions
+    const trailGeo = new THREE.BufferGeometry();
+    const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
+      color: 0x7fc4ff, transparent: true, opacity: 0.3,
+    }));
+    this.scene.add(trail);
+
+    const node: PlanetNode = {
+      spec, pivot, mesh, body,
+      angle: 0, period: Infinity,
+      label: this.makeLabel(spec),
+    };
+    this.planets.push(node);
+    this.halley = { node, tail, trail, trailPts: [] };
+  }
+
+  private buildVoyager(v: VoyagerSpec) {
+    const spec = VOYAGER_SPECS.find(s => s.id === v.id)!;
+    const pivot = new THREE.Group();
+    this.scene.add(pivot);
+    const body = new THREE.Group();
+    pivot.add(body);
+
+    const mesh = new THREE.Mesh(
+      new THREE.OctahedronGeometry(spec.radius, 1),
+      new THREE.MeshStandardMaterial({ color: 0xffd28a, roughness: 0.35, metalness: 0.8, emissive: 0x664411 }),
+    );
+    body.add(mesh);
+
+    // generous invisible hit-sphere so the tiny craft is clickable
+    const hit = new THREE.Mesh(
+      new THREE.SphereGeometry(2.6, 8, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    );
+    hit.userData.planetId = spec.id;
+    body.add(hit);
+    this.pickMeshes.push(hit);
+
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite('rgba(255,210,140,0.9)', 'rgba(255,180,90,0.25)'),
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85,
+    }));
+    glow.scale.setScalar(1.8);
+    body.add(glow);
+
+    const node: PlanetNode = {
+      spec, pivot, mesh, body,
+      angle: 0, period: Infinity,
+      label: this.makeLabel(spec),
+    };
+    this.planets.push(node);
+    this.voyagers.push({ node, v, lastAu: -1 });
   }
 
   private makeStars(count: number, radius: number): THREE.Points {
@@ -329,6 +439,7 @@ export class SolarEngine {
     for (const p of this.planets) {
       if (p.label) p.label.textContent = lang === 'zh' ? p.spec.cn : p.spec.name;
     }
+    this.voyagers.forEach(r => { r.lastAu = -1; }); // force live-range refresh
     this.emitSnapshot();
   }
 
@@ -391,6 +502,12 @@ export class SolarEngine {
     return on;
   }
 
+  toggleEphemeris() {
+    this.ephemOn = !this.ephemOn;
+    this.toast(this.ephemOn ? STR[this.lang].toast.ephemOn : STR[this.lang].toast.ephemOff);
+    this.emitSnapshot();
+  }
+
   focusPlanet(node: PlanetNode) {
     this.setCine(false);
     this.focus = node;
@@ -439,7 +556,9 @@ export class SolarEngine {
       orbit: this.orbit,
       labels: this.labelsOn,
       sound: this.ambience.isOn,
+      ephemeris: this.ephemOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
+      focusId: this.focus?.spec.id ?? 'sun',
       focusName: this.focus ? this.planetName(this.focus) : STR[this.lang].sun,
       focusFact: this.focus
         ? (zh
@@ -481,11 +600,34 @@ export class SolarEngine {
     this.simDays += simDt * DAYS_PER_SECOND;
 
     // orbital mechanics
+    const jd = BASE_JD + this.simDays;
     for (const p of this.planets) {
-      p.angle += (simDt / p.period) * Math.PI * 2;
-      p.body.position.set(Math.cos(p.angle) * p.spec.distance, 0, Math.sin(p.angle) * p.spec.distance);
+      if (p.spec.id === 'halley') {
+        const pos = halleyScenePos(this.simDays);
+        p.body.position.set(pos.x, pos.y, pos.z);
+        this.updateCometTail(p.body.position);
+      } else if (p.spec.id === 'voyager1' || p.spec.id === 'voyager2') {
+        const rec = this.voyagers.find(r => r.v.id === p.spec.id);
+        if (rec) {
+          const pos = voyagerScenePos(rec.v, this.simDays);
+          p.body.position.set(pos.x, pos.y, pos.z);
+          const au = voyagerAU(rec.v, this.simDays);
+          if (Math.abs(au - rec.lastAu) >= 0.05 && p.label) {
+            rec.lastAu = au;
+            p.label.textContent = `${this.lang === 'zh' ? p.spec.cn : p.spec.name} · ${au.toFixed(1)} AU`;
+          }
+        }
+      } else if (this.ephemOn) {
+        const { lon, lat } = helioLonLat(p.spec.id, jd);
+        const d = p.spec.distance;
+        p.body.position.set(Math.cos(lon) * d, Math.sin(lat) * d, Math.sin(lon) * d);
+      } else {
+        p.angle += (simDt / p.period) * Math.PI * 2;
+        p.body.position.set(Math.cos(p.angle) * p.spec.distance, 0, Math.sin(p.angle) * p.spec.distance);
+      }
       p.mesh.rotation.y += simDt * p.spec.spin * 0.9;
     }
+    this.updateCometTrail();
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
     if (this.moon) this.moon.pivot.rotation.y += simDt * (Math.PI * 2 / (0.074 * 24));
@@ -514,16 +656,56 @@ export class SolarEngine {
     }
     if (this.telTimer >= 0.2) {
       this.telTimer = 0;
+      const focusVoy = this.focus && (this.focus.spec.id === 'voyager1' || this.focus.spec.id === 'voyager2')
+        ? VOYAGERS.find(v => v.id === this.focus!.spec.id) : undefined;
       this.onTelemetry?.({
         fps: this.fps,
         distAU: this.camera.position.distanceTo(this.controls.target) / AU_UNITS,
         flow: this.speed * DAYS_PER_SECOND,
         simDays: this.simDays,
+        focusAU: focusVoy ? voyagerAU(focusVoy, this.simDays) : null,
       });
     }
 
     this.renderer.render(this.scene, this.camera);
   };
+
+  // comet tail — particle fan streaming away from the Sun
+  private updateCometTail(nucleus: THREE.Vector3) {
+    if (!this.halley) return;
+    const attr = this.halley.tail.geometry.attributes.position as THREE.BufferAttribute;
+    const r = nucleus.length();
+    const L = THREE.MathUtils.clamp(620 / (r * r), 1.2, 13);
+    const dir = nucleus.clone().normalize();
+    const perp = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+    const perp2 = new THREE.Vector3().crossVectors(dir, perp).normalize();
+    const n = attr.count;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 1) / n;
+      const spread = t * L * 0.22;
+      const j1 = (Math.random() - 0.5) * spread;
+      const j2 = (Math.random() - 0.5) * spread;
+      attr.setXYZ(i,
+        nucleus.x + dir.x * L * t + perp.x * j1 + perp2.x * j2,
+        nucleus.y + dir.y * L * t + perp.y * j1 + perp2.y * j2,
+        nucleus.z + dir.z * L * t + perp.z * j1 + perp2.z * j2);
+    }
+    attr.needsUpdate = true;
+    (this.halley.tail.material as THREE.PointsMaterial).opacity = THREE.MathUtils.clamp(26 / (r * r) + 0.15, 0.15, 0.85);
+  }
+
+  // comet trail — recent path through the system
+  private updateCometTrail() {
+    if (!this.halley) return;
+    const pts = this.halley.trailPts;
+    const cur = this.halley.node.body.position;
+    const last = pts[pts.length - 1];
+    if (!last || last.distanceToSquared(cur) > 0.02) {
+      pts.push(cur.clone());
+      if (pts.length > 220) pts.shift();
+      this.halley.trail.geometry.setFromPoints(pts);
+    }
+  }
 
   private updateCine(dt: number) {
     const shot = CINE_SHOTS[this.cineShot];
