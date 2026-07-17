@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry } from './solar/engine';
-import { VIEWS, INTRO_QUOTE } from './solar/data';
+import { VIEWS } from './solar/data';
+import { STR } from './solar/i18n';
+import type { Lang } from './solar/i18n';
 
 const BASE_DATE = Date.UTC(2026, 6, 17);
+const LANG_KEY = 'helion-lang';
 
 function fmtSimDate(days: number): string {
   const d = new Date(BASE_DATE + days * 86400000);
@@ -29,6 +32,12 @@ export default function App() {
   const [fatal, setFatal] = useState('');
   const [clock, setClock] = useState('00:00:00');
   const [hintShow, setHintShow] = useState(false);
+  const [lang, setLang] = useState<Lang>(() => {
+    try { return (localStorage.getItem(LANG_KEY) as Lang) || 'zh'; } catch { return 'zh'; }
+  });
+  const langRef = useRef(lang);
+  langRef.current = lang;
+  const t = STR[lang];
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -43,9 +52,16 @@ export default function App() {
     engine.onTelemetry = setTel;
     engine.onToast = showToast;
     engine.onFatal = (m) => setFatal(m);
+    engine.setLang(langRef.current);
     const initTimer = setTimeout(() => engine.init(), 60);
     return () => { clearTimeout(initTimer); engine.dispose(); engineRef.current = null; };
   }, [showToast]);
+
+  // language switching
+  useEffect(() => {
+    engineRef.current?.setLang(lang);
+    try { localStorage.setItem(LANG_KEY, lang); } catch { /* noop */ }
+  }, [lang]);
 
   // mission clock
   useEffect(() => {
@@ -104,77 +120,80 @@ export default function App() {
 
         <div id="title-block">
           <h1>HELION</h1>
-          <div className="sub">SOLAR SYSTEM · 8 PLANETS · 1 STAR · 1 BELT</div>
-          <div className="sub2">KEPLERIAN ORBITAL MECHANICS // REAL-TIME SIMULATION</div>
+          <div className="sub">{t.subtitle}</div>
+          <div className="sub2">{t.subtitle2}</div>
         </div>
 
         <div id="clock-block">
-          <div className="label">MISSION ELAPSED</div>
+          <div className="label">{t.missionElapsed}</div>
           <div id="clock-val">{clock}</div>
-          <div id="sim-val">SIM {fmtSimDate(tel.simDays)}</div>
+          <div id="sim-val">{t.simDate} {fmtSimDate(tel.simDays)}</div>
         </div>
 
         <div id="telemetry">
-          <div className="row"><span className="k">OBSERVER DISTANCE</span><span className="v">{tel.distAU.toFixed(2)} AU</span></div>
-          <div className="row"><span className="k">FOCUS TARGET</span><span className="v">{(snap?.focusId ?? 'sun').toUpperCase()}</span></div>
-          <div className="row"><span className="k">ORBITAL FLOW</span><span className="v">{tel.flow.toFixed(1)} DAYS/S</span></div>
-          <div className="row"><span className="k">TIME DILATION</span><span className="v">×{p.speed.toFixed(2)}</span></div>
-          <div className="row"><span className="k">FRAME RATE</span><span className="v">{tel.fps} FPS</span></div>
+          <div className="row"><span className="k">{t.observerDistance}</span><span className="v">{tel.distAU.toFixed(2)} AU</span></div>
+          <div className="row"><span className="k">{t.focusTarget}</span><span className="v">{snap?.focusName ?? t.sun}</span></div>
+          <div className="row"><span className="k">{t.orbitalFlow}</span><span className="v">{tel.flow.toFixed(1)} {t.daysPerSec}</span></div>
+          <div className="row"><span className="k">{t.timeDilation}</span><span className="v">×{p.speed.toFixed(2)}</span></div>
+          <div className="row"><span className="k">{t.frameRate}</span><span className="v">{tel.fps} FPS</span></div>
           {snap?.focusFact ? <div className="row"><span className="fact">▸ {snap.focusFact}</span></div> : null}
         </div>
 
         <div id="deck" className="ctl">
           <div className="deck-title">
-            <span>{snap?.cine ? `CINE · ${snap.shotName}` : 'FLIGHT DECK'}</span>
+            <span>{snap?.cine ? `${t.cinePrefix} · ${snap.shotName}` : t.flightDeck}</span>
             <span className="deck-dot" />
           </div>
           <button className={`hbtn wide ${snap?.cine ? 'active' : ''}`} onClick={() => eng()?.toggleCine()}>
-            {snap?.cine ? '■ CINEMATIC SEQUENCE' : '▶ CINEMATIC SEQUENCE'}
+            {snap?.cine ? t.cineStop : t.cinePlay}
           </button>
           <div className="grid2">
             {VIEWS.map((v, i) => (
-              <button key={v.name} className="hbtn" onClick={() => eng()?.setView(i)}>{v.name}</button>
+              <button key={v.name} className="hbtn" onClick={() => eng()?.setView(i)}>{lang === 'zh' ? v.nameCn : v.name}</button>
             ))}
           </div>
           <div className="grid4">
-            <button className={`hbtn ${snap?.orbit ? 'active' : ''}`} onClick={() => eng()?.toggleOrbit()}>ORBIT</button>
-            <button className={`hbtn ${snap?.labels ? 'active' : ''}`} onClick={() => eng()?.toggleLabels()}>LABELS</button>
-            <button className={`hbtn ${paramsOpen ? 'active' : ''}`} onClick={() => setParamsOpen(v => !v)}>PARAMS</button>
-            <button className={`hbtn ${hudOn ? 'active' : ''}`} onClick={() => setHudOn(v => !v)}>HUD</button>
+            <button className={`hbtn ${snap?.orbit ? 'active' : ''}`} onClick={() => eng()?.toggleOrbit()}>{t.orbit}</button>
+            <button className={`hbtn ${snap?.labels ? 'active' : ''}`} onClick={() => eng()?.toggleLabels()}>{t.labels}</button>
+            <button className={`hbtn ${paramsOpen ? 'active' : ''}`} onClick={() => setParamsOpen(v => !v)}>{t.params}</button>
+            <button className={`hbtn ${hudOn ? 'active' : ''}`} onClick={() => setHudOn(v => !v)}>{t.hud}</button>
           </div>
           <button className={`hbtn wide ${snap?.sound ? 'active' : ''}`} onClick={() => eng()?.toggleSound()}>
-            {snap?.sound ? '🔊 SOUND: ON' : '🔇 SOUND: OFF'}
+            {snap?.sound ? t.soundOn : t.soundOff}
           </button>
-          <div id="deck-hint">1-4 VIEWS · C CINE · R ORBIT · L LABELS · P PARAMS · M SOUND · H HUD · ESC RELEASE</div>
+          <button className="hbtn wide" onClick={() => setLang(l => (l === 'zh' ? 'en' : 'zh'))}>
+            {t.langButton}
+          </button>
+          <div id="deck-hint">{t.deckHint}</div>
         </div>
 
         <div id="hint" className={hintShow ? 'show' : ''}>
-          DRAG ORBIT · SCROLL ZOOM · CLICK PLANET TO FOCUS · C CINEMATIC · M SOUND · H HUD
+          {t.bottomHint}
         </div>
       </div>
 
       <div id="params" className={paramsOpen ? 'ctl' : 'ctl hidden'}>
         <div className="p-head">
-          <span className="p-title">PARAMETERS</span>
-          <button id="btn-reset" className="hbtn" onClick={() => eng()?.resetParams()}>RESET</button>
+          <span className="p-title">{t.parameters}</span>
+          <button id="btn-reset" className="hbtn" onClick={() => eng()?.resetParams()}>{t.reset}</button>
         </div>
         <div className="p-row">
-          <div className="p-meta"><span>TIME FLOW</span><span className="p-val">×{p.speed.toFixed(2)}</span></div>
+          <div className="p-meta"><span>{t.timeFlow}</span><span className="p-val">×{p.speed.toFixed(2)}</span></div>
           <input type="range" min={0} max={8} step={0.05} value={p.speed}
             onChange={e => eng()?.setParam('speed', Number(e.target.value))} />
         </div>
         <div className="p-row">
-          <div className="p-meta"><span>ORBIT LINES</span><span className="p-val">{Math.round(p.orbitOpacity * 100)}%</span></div>
+          <div className="p-meta"><span>{t.orbitLines}</span><span className="p-val">{Math.round(p.orbitOpacity * 100)}%</span></div>
           <input type="range" min={0} max={1} step={0.01} value={p.orbitOpacity}
             onChange={e => eng()?.setParam('orbitOpacity', Number(e.target.value))} />
         </div>
         <div className="p-row">
-          <div className="p-meta"><span>PLANET SCALE</span><span className="p-val">×{p.planetScale.toFixed(2)}</span></div>
+          <div className="p-meta"><span>{t.planetScale}</span><span className="p-val">×{p.planetScale.toFixed(2)}</span></div>
           <input type="range" min={0.5} max={3} step={0.05} value={p.planetScale}
             onChange={e => eng()?.setParam('planetScale', Number(e.target.value))} />
         </div>
         <div className="p-row">
-          <div className="p-meta"><span>STARFIELD</span><span className="p-val">{Math.round(p.starfield * 100)}%</span></div>
+          <div className="p-meta"><span>{t.starfield}</span><span className="p-val">{Math.round(p.starfield * 100)}%</span></div>
           <input type="range" min={0} max={1} step={0.01} value={p.starfield}
             onChange={e => eng()?.setParam('starfield', Number(e.target.value))} />
         </div>
@@ -183,9 +202,9 @@ export default function App() {
       {!introGone && (
         <div id="intro" className={introFading ? 'done' : ''}>
           <div className="intro-card">
-            <div className="intro-tag">REAL-TIME ORBITAL SIMULATION</div>
+            <div className="intro-tag">{t.introTag}</div>
             <div className="intro-title">HELION</div>
-            <div className="intro-quote">{INTRO_QUOTE}</div>
+            <div className="intro-quote">{t.introQuote}</div>
           </div>
         </div>
       )}
