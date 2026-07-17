@@ -8,21 +8,28 @@ function hash2(x: number, y: number, seed: number): number {
   return h - Math.floor(h);
 }
 
-function valueNoise(x: number, y: number, seed: number): number {
+// period > 0 makes the lattice wrap in x (period in integer lattice cells),
+// so textures are seamless when wrapped around a sphere.
+function valueNoise(x: number, y: number, seed: number, period = 0): number {
   const xi = Math.floor(x), yi = Math.floor(y);
   const xf = x - xi, yf = y - yi;
   const u = xf * xf * (3 - 2 * xf);
   const v = yf * yf * (3 - 2 * yf);
-  const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed);
-  const c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
+  let x0 = xi, x1 = xi + 1;
+  if (period > 0) {
+    x0 = ((xi % period) + period) % period;
+    x1 = (x0 + 1) % period;
+  }
+  const a = hash2(x0, yi, seed), b = hash2(x1, yi, seed);
+  const c = hash2(x0, yi + 1, seed), d = hash2(x1, yi + 1, seed);
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-function fbm(x: number, y: number, seed: number, octaves = 5): number {
+function fbm(x: number, y: number, seed: number, octaves = 5, period = 0): number {
   let sum = 0, amp = 0.5, freq = 1;
   for (let i = 0; i < octaves; i++) {
-    sum += amp * valueNoise(x * freq, y * freq, seed + i * 13.7);
-    amp *= 0.5; freq *= 2.03;
+    sum += amp * valueNoise(x * freq, y * freq, seed + i * 13.7, period > 0 ? period * freq : 0);
+    amp *= 0.5; freq *= 2;
   }
   return sum;
 }
@@ -56,8 +63,8 @@ function paintRocky(palette: RGB[], seed: number, craters: number): HTMLCanvasEl
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const nx = x / W * 6, ny = y / H * 3;
-      const n = fbm(nx, ny, seed, 5);
-      const m = fbm(nx * 2.3 + 9, ny * 2.3, seed + 40, 4);
+      const n = fbm(nx, ny, seed, 5, 6);
+      const m = fbm(nx * 2 + 9, ny * 2, seed + 40, 4, 12);
       let col = mix(palette[0], palette[1], Math.min(1, Math.max(0, n * 1.6 - 0.2)));
       col = mix(col, palette[2], Math.min(1, Math.max(0, m * 1.9 - 0.75)));
       const i = (y * W + x) * 4;
@@ -65,17 +72,19 @@ function paintRocky(palette: RGB[], seed: number, craters: number): HTMLCanvasEl
     }
   }
   ctx.putImageData(img, 0, 0);
-  // craters
+  // craters (drawn wrapped so none clips at the texture seam)
   if (craters > 0) {
     for (let i = 0; i < craters; i++) {
       const cx = hash2(i, 3, seed) * W, cy = hash2(i, 7, seed) * H;
       const r = 1.5 + hash2(i, 11, seed) * 7;
-      const g = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
-      g.addColorStop(0, 'rgba(0,0,0,0.34)');
-      g.addColorStop(0.75, 'rgba(0,0,0,0.10)');
-      g.addColorStop(1, 'rgba(255,255,255,0.06)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      for (const ox of [-W, 0, W]) {
+        const g = ctx.createRadialGradient(cx + ox, cy, r * 0.2, cx + ox, cy, r);
+        g.addColorStop(0, 'rgba(0,0,0,0.34)');
+        g.addColorStop(0.75, 'rgba(0,0,0,0.10)');
+        g.addColorStop(1, 'rgba(255,255,255,0.06)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx + ox, cy, r, 0, Math.PI * 2); ctx.fill();
+      }
     }
   }
   return c;
@@ -90,14 +99,14 @@ function paintGasGiant(bands: RGB[], seed: number, turb: number, spot?: { x: num
     const v = y / H;
     for (let x = 0; x < W; x++) {
       const u = x / W;
-      const wobble = fbm(u * 8, v * 16, seed, 4) * turb;
+      const wobble = fbm(u * 8, v * 16, seed, 4, 8) * turb;
       const band = v * nb + wobble;
       const i0 = ((Math.floor(band) % nb) + nb) % nb;
       const i1 = (i0 + 1) % nb;
       const t = band - Math.floor(band);
       const smooth = t * t * (3 - 2 * t);
       let col = mix(bands[i0], bands[i1], smooth);
-      const streak = fbm(u * 24 + v * 4, v * 40, seed + 5, 3);
+      const streak = fbm(u * 24 + v * 4, v * 40, seed + 5, 3, 24);
       col = mix(col, [col[0] * 1.08, col[1] * 1.08, col[2] * 1.08], streak * 0.5);
       const i = (y * W + x) * 4;
       img.data[i] = Math.min(255, col[0]); img.data[i + 1] = Math.min(255, col[1]); img.data[i + 2] = Math.min(255, col[2]); img.data[i + 3] = 255;
@@ -131,8 +140,8 @@ function paintEarth(): HTMLCanvasElement {
     const polar = Math.pow(Math.abs(v - 0.5) * 2, 6);
     for (let x = 0; x < W; x++) {
       const u = x / W;
-      const n = fbm(u * 5, v * 2.5, 7.3, 6);
-      const detail = fbm(u * 14, v * 7, 19.1, 4);
+      const n = fbm(u * 5, v * 2.5, 7.3, 6, 5);
+      const detail = fbm(u * 14, v * 7, 19.1, 4, 14);
       let col: RGB;
       if (n > 0.52) {
         col = mix(land, dry, Math.min(1, (detail - 0.35) * 2.4));
@@ -145,7 +154,7 @@ function paintEarth(): HTMLCanvasElement {
       const cap = Math.min(1, polar * (1.6 + detail));
       col = mix(col, ice, cap);
       // clouds
-      const cl = fbm(u * 7 + 31, v * 3.5, 55.5, 4);
+      const cl = fbm(u * 7 + 31, v * 3.5, 55.5, 4, 7);
       if (cl > 0.58) col = mix(col, [245, 248, 250], Math.min(0.75, (cl - 0.58) * 3.2));
       const i = (y * W + x) * 4;
       img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
@@ -162,8 +171,8 @@ function paintSun(): HTMLCanvasElement {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const u = x / W, v = y / H;
-      const n = fbm(u * 9, v * 4.5, 3.1, 5);
-      const g = fbm(u * 22, v * 11, 8.8, 3);
+      const n = fbm(u * 9, v * 4.5, 3.1, 5, 9);
+      const g = fbm(u * 22, v * 11, 8.8, 3, 22);
       let col = mix([255, 140, 30], [255, 214, 120], n);
       col = mix(col, [255, 244, 200], Math.pow(g, 3) * 1.4);
       const i = (y * W + x) * 4;
