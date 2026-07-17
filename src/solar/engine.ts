@@ -8,8 +8,6 @@ import {
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite } from './textures';
 import { Ambience } from './audio';
-import { STR } from './i18n';
-import type { Lang } from './i18n';
 
 export interface HudSnapshot {
   cine: boolean;
@@ -17,7 +15,7 @@ export interface HudSnapshot {
   labels: boolean;
   sound: boolean;
   shotName: string;
-  focusName: string;
+  focusId: string;
   focusFact: string;
   viewName: string;
   params: { speed: number; orbitOpacity: number; planetScale: number; starfield: number };
@@ -93,7 +91,6 @@ export class SolarEngine {
   private ambience = new Ambience();
   private downPos = { x: 0, y: 0 };
   private params = { speed: 1, orbitOpacity: 0.55, planetScale: 1, starfield: 0.9 };
-  private lang: Lang = 'en';
 
   onSnapshot: ((s: HudSnapshot) => void) | null = null;
   onTelemetry: ((t: Telemetry) => void) | null = null;
@@ -287,7 +284,7 @@ export class SolarEngine {
     // label
     const label = document.createElement('div');
     label.className = 'p-label';
-    label.textContent = this.lang === 'zh' ? spec.cn : spec.name;
+    label.textContent = spec.name;
     label.style.color = spec.color;
     this.labelLayer.appendChild(label);
 
@@ -324,18 +321,6 @@ export class SolarEngine {
   };
 
   // ------------------------------------------------------------- public API
-  setLang(lang: Lang) {
-    this.lang = lang;
-    for (const p of this.planets) {
-      if (p.label) p.label.textContent = lang === 'zh' ? p.spec.cn : p.spec.name;
-    }
-    this.emitSnapshot();
-  }
-
-  private planetName(node: PlanetNode): string {
-    return this.lang === 'zh' ? node.spec.cn : node.spec.name;
-  }
-
   toggleCine() { this.setCine(!this.cine); }
 
   private setCine(on: boolean) {
@@ -347,9 +332,9 @@ export class SolarEngine {
       this.cineTime = 0;
       this.cineAz = CINE_SHOTS[0].azimuth;
       this.cineTarget.copy(this.controls.target);
-      this.toast(STR[this.lang].toast.cineOn);
+      this.toast('CINEMATIC SEQUENCE — ENGAGED');
     } else {
-      this.toast(STR[this.lang].toast.cineOff);
+      this.toast('MANUAL CONTROL');
     }
     this.emitSnapshot();
   }
@@ -366,27 +351,26 @@ export class SolarEngine {
       Math.cos(v.elevation * DEG) * Math.sin(v.azimuth * DEG),
     ).multiplyScalar(v.distance);
     this.startTween(pos, tgt, 2.2);
-    const name = this.lang === 'zh' ? v.nameCn : v.name;
-    this.toast(STR[this.lang].toast.vectorLock + name);
-    this.emitSnapshot(name);
+    this.toast('VECTOR LOCK — ' + v.name);
+    this.emitSnapshot(v.name);
   }
 
   toggleOrbit() {
     this.orbit = !this.orbit;
-    this.toast(this.orbit ? STR[this.lang].toast.orbitOn : STR[this.lang].toast.orbitOff);
+    this.toast(this.orbit ? 'AUTO-ORBIT ON' : 'AUTO-ORBIT OFF');
     this.emitSnapshot();
   }
 
   toggleLabels() {
     this.labelsOn = !this.labelsOn;
     this.labelLayer.style.display = this.labelsOn ? '' : 'none';
-    this.toast(this.labelsOn ? STR[this.lang].toast.labelsOn : STR[this.lang].toast.labelsOff);
+    this.toast(this.labelsOn ? 'LABELS ON' : 'LABELS OFF');
     this.emitSnapshot();
   }
 
   toggleSound(): boolean {
     const on = this.ambience.toggle();
-    this.toast(on ? STR[this.lang].toast.soundOn : STR[this.lang].toast.soundOff);
+    this.toast(on ? 'AMBIENCE CHANNEL OPEN' : 'AMBIENCE MUTED');
     this.emitSnapshot();
     return on;
   }
@@ -395,7 +379,7 @@ export class SolarEngine {
     this.setCine(false);
     this.focus = node;
     this.tween = null;
-    this.toast(STR[this.lang].toast.acquiring + this.planetName(node));
+    this.toast('ACQUIRING TARGET — ' + node.spec.name);
     this.emitSnapshot();
   }
 
@@ -404,7 +388,7 @@ export class SolarEngine {
     this.focus = null;
     const back = this.controls.target.clone().add(this.camera.position.clone().sub(this.controls.target).normalize().multiplyScalar(60));
     this.startTween(back, new THREE.Vector3(0, 0, 0), 1.8);
-    this.toast(STR[this.lang].toast.released);
+    this.toast('TARGET RELEASED — RETURN TO SOL');
     this.emitSnapshot();
   }
 
@@ -428,24 +412,18 @@ export class SolarEngine {
     this.setParam('starfield', 0.9);
     this.setParam('planetScale', 1);
     this.setParam('speed', 1);
-    this.toast(STR[this.lang].toast.reset);
+    this.toast('PARAMETERS RESET');
   }
 
   getSnapshot(): HudSnapshot {
-    const zh = this.lang === 'zh';
-    const shot = CINE_SHOTS[this.cineShot];
     return {
       cine: this.cine,
       orbit: this.orbit,
       labels: this.labelsOn,
       sound: this.ambience.isOn,
-      shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
-      focusName: this.focus ? this.planetName(this.focus) : STR[this.lang].sun,
-      focusFact: this.focus
-        ? (zh
-          ? `${this.focus.spec.cn} · ${this.focus.spec.name} — ${this.focus.spec.factCn}`
-          : `${this.focus.spec.name} · ${this.focus.spec.cn} — ${this.focus.spec.fact}`)
-        : '',
+      shotName: this.cine ? CINE_SHOTS[this.cineShot].name : '',
+      focusId: this.focus?.spec.id ?? 'sun',
+      focusFact: this.focus ? `${this.focus.spec.name} · ${this.focus.spec.cn} — ${this.focus.spec.fact}` : '',
       viewName: '',
       params: { ...this.params },
     };
