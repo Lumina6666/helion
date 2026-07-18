@@ -356,53 +356,132 @@ export class SolarEngine {
     this.halley = { node, tail, trail, trailPts: [], tailMat, coma };
   }
 
-  // recognizable Voyager silhouette: parabolic high-gain dish, golden bus,
-  // RTG power rod, magnetometer boom. Dish (+Z) is aimed at the Sun/Earth.
+  // detailed Voyager: 3.7 m high-gain dish with feed tripod, golden MLI bus
+  // with equipment bays & the Golden Record, finned RTG, 13 m magnetometer
+  // boom, twin plasma-wave whips, scan platform. Dish (+Z) tracks the Sun.
   private buildVoyagerCraft(): THREE.Group {
     const g = new THREE.Group();
-    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.35, metalness: 0.85, emissive: 0x2a1e05 });
-    const white = new THREE.MeshStandardMaterial({ color: 0xc9c6bd, roughness: 0.75, metalness: 0.1, side: THREE.DoubleSide });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x555c66, roughness: 0.6, metalness: 0.6 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.32, metalness: 0.9, emissive: 0x2a1e05 });
+    const goldDark = new THREE.MeshStandardMaterial({ color: 0x8a6d1a, roughness: 0.45, metalness: 0.85 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xcfccc4, roughness: 0.72, metalness: 0.08, side: THREE.DoubleSide });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x4a5058, roughness: 0.55, metalness: 0.65 });
+    const rtgRed = new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.5, metalness: 0.4 });
+    const record = new THREE.MeshStandardMaterial({ color: 0xffd766, roughness: 0.18, metalness: 1.0, emissive: 0x332200 });
 
-    // decagonal bus
-    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.34, 10), gold));
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.06, 10), gold);
-    cap.position.y = -0.2;
-    g.add(cap);
+    const strut = (a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) => {
+      const d = b.clone().sub(a);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 6), mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      g.add(m);
+    };
 
-    // high-gain dish (paraboloid opening toward +Z)
-    const pts: THREE.Vector2[] = [];
-    for (let i = 0; i <= 14; i++) {
-      const r = (i / 14) * 0.5;
-      pts.push(new THREE.Vector2(r, 0.06 + 0.45 * r * r));
+    // ---- bus: decagonal body + equipment bay + top deck
+    const bus = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.38, 10), gold);
+    g.add(bus);
+    const bay = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.1, 10), dark);
+    bay.position.y = -0.24;
+    g.add(bay);
+    const deck = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.09, 10), goldDark);
+    deck.position.y = 0.235;
+    g.add(deck);
+
+    // thermal louvers / electronics boxes around the bus
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.26;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.03), i % 2 ? dark : goldDark);
+      box.position.set(Math.cos(a) * 0.33, (i % 3 - 1) * 0.09, Math.sin(a) * 0.33);
+      box.lookAt(Math.cos(a) * 2, box.position.y, Math.sin(a) * 2);
+      g.add(box);
     }
-    const dish = new THREE.Mesh(new THREE.LatheGeometry(pts, 28), white);
+
+    // Golden Record — bright disc mounted on the bus flank
+    const rec = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.015, 24), record);
+    rec.rotation.z = Math.PI / 2;
+    rec.position.set(0.335, 0.05, 0.06);
+    rec.rotation.y = 0.2;
+    g.add(rec);
+
+    // thruster clusters under the bus rim
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      const th = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.07, 8), dark);
+      th.position.set(Math.cos(a) * 0.28, -0.3, Math.sin(a) * 0.28);
+      th.rotation.x = Math.PI;
+      g.add(th);
+    }
+
+    // ---- high-gain dish: paraboloid + rim ring + feed tripod
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 16; i++) {
+      const r = (i / 16) * 0.55;
+      pts.push(new THREE.Vector2(r, 0.05 + 0.5 * r * r));
+    }
+    const dish = new THREE.Mesh(new THREE.LatheGeometry(pts, 32), white);
     dish.rotation.x = Math.PI / 2;
-    dish.position.set(0, 0, 0.22);
+    dish.position.set(0, 0, 0.2);
     g.add(dish);
-    const feed = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 10), dark);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.014, 8, 40), dark);
+    rim.position.set(0, 0, 0.2 + 0.05 + 0.5 * 0.55 * 0.55);
+    g.add(rim);
+    // feed assembly held by three struts
+    const feedPos = new THREE.Vector3(0, 0, 0.52);
+    const feed = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 10), dark);
     feed.rotation.x = -Math.PI / 2;
-    feed.position.set(0, 0, 0.46);
+    feed.position.copy(feedPos);
     g.add(feed);
+    const subRef = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 12), white);
+    subRef.rotation.x = Math.PI / 2;
+    subRef.position.set(0, 0, 0.44);
+    g.add(subRef);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + Math.PI / 2;
+      strut(new THREE.Vector3(Math.cos(a) * 0.52, Math.sin(a) * 0.52, 0.4), feedPos, 0.011, dark);
+    }
 
-    // RTG boom + generator
-    const boom1 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), dark);
-    boom1.rotation.z = Math.PI / 2;
-    boom1.position.set(-0.55, 0.12, -0.12);
-    g.add(boom1);
-    const rtg = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.09, 0.09, 0.32, 10),
-      new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.5, metalness: 0.4 }),
-    );
-    rtg.rotation.z = Math.PI / 2;
-    rtg.position.set(-1.18, 0.12, -0.12);
-    g.add(rtg);
+    // ---- RTG boom: articulated strut + finned generator
+    strut(new THREE.Vector3(-0.3, 0.12, -0.12), new THREE.Vector3(-0.95, 0.18, -0.18), 0.02, dark);
+    const rtgCore = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.34, 10), rtgRed);
+    rtgCore.rotation.z = Math.PI / 2;
+    rtgCore.position.set(-1.14, 0.18, -0.18);
+    g.add(rtgCore);
+    for (let i = 0; i < 6; i++) {
+      const fin = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.014, 12), rtgRed);
+      fin.rotation.z = Math.PI / 2;
+      fin.position.set(-1.0 - i * 0.055, 0.18, -0.18);
+      g.add(fin);
+    }
 
-    // magnetometer boom — long thin rod angled aft
-    const boom2 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.7, 6), dark);
-    boom2.rotation.set(0.5, 0, 2.2);
-    boom2.position.set(0.5, -0.6, -0.22);
-    g.add(boom2);
+    // ---- magnetometer boom: two-segment, very long, aft-pointing
+    strut(new THREE.Vector3(0.28, -0.15, -0.15), new THREE.Vector3(0.85, -0.7, -0.3), 0.013, dark);
+    strut(new THREE.Vector3(0.85, -0.7, -0.3), new THREE.Vector3(1.35, -1.2, -0.42), 0.009, dark);
+    const magBox = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.08), dark);
+    magBox.position.set(1.35, -1.2, -0.42);
+    g.add(magBox);
+
+    // ---- twin plasma-wave whip antennas (thin V pair)
+    strut(new THREE.Vector3(0, -0.28, 0.05), new THREE.Vector3(0.55, -1.35, 0.35), 0.006, dark);
+    strut(new THREE.Vector3(0, -0.28, 0.05), new THREE.Vector3(-0.55, -1.35, 0.35), 0.006, dark);
+
+    // ---- scan platform: articulated arm with camera pair
+    strut(new THREE.Vector3(0.15, 0.05, -0.28), new THREE.Vector3(0.4, 0.28, -0.55), 0.016, goldDark);
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.08), dark);
+    platform.position.set(0.44, 0.32, -0.6);
+    platform.rotation.y = 0.5;
+    g.add(platform);
+    for (const off of [-0.04, 0.04]) {
+      const cam = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.09, 8), white);
+      cam.position.set(0.44 + off, 0.38, -0.6);
+      cam.rotation.x = 0.9;
+      g.add(cam);
+    }
+
+    // ---- star tracker / sun sensor on the deck
+    const tracker = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.09, 8), dark);
+    tracker.position.set(-0.18, 0.28, 0.12);
+    tracker.rotation.z = 0.5;
+    g.add(tracker);
+
     return g;
   }
 
