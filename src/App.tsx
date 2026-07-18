@@ -47,7 +47,7 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
-  const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null });
+  const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null, probe: null });
   const [dossierOpen, setDossierOpen] = useState(true);
   const [hudOn, setHudOn] = useState(true);
   const [paramsOpen, setParamsOpen] = useState(false);
@@ -69,6 +69,12 @@ export default function App() {
   const [predResult, setPredResult] = useState<{ actual: string; errDays: number; score: number } | null>(null);
   const [scrubAnchor, setScrubAnchor] = useState<number | null>(null);
   const [scrubVal, setScrubVal] = useState(0);
+  const [probeMission, setProbeMission] = useState<'flyby' | 'impact' | 'captured'>('flyby');
+  const [probeTarget, setProbeTarget] = useState('mars');
+  const probeMissionRef = useRef(probeMission);
+  const probeTargetRef = useRef(probeTarget);
+  probeMissionRef.current = probeMission;
+  probeTargetRef.current = probeTarget;
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem(LANG_KEY) as Lang) || 'zh'; } catch { return 'zh'; }
   });
@@ -164,6 +170,12 @@ export default function App() {
         case 'e': eng.toggleEphemeris(); break;
         case 'd': setDossierOpen(v => !v); break;
         case 't': setTimeOpen(v => !v); break;
+        case 'g': {
+          const e = eng;
+          if (e.isProbeMode()) e.exitProbeMode();
+          else e.enterProbeMode(probeMissionRef.current, probeTargetRef.current);
+          break;
+        }
         case 'escape': eng.clearFocus(); break;
       }
     };
@@ -212,6 +224,25 @@ export default function App() {
       score: Math.max(0, Math.round(100 - err)),
     });
   };
+  // ---- probe mode helpers
+  const probe = tel.probe;
+  const onProbeToggle = () => {
+    const e = eng();
+    if (!e) return;
+    if (e.isProbeMode()) e.exitProbeMode();
+    else e.enterProbeMode(probeMission, probeTarget);
+  };
+  useEffect(() => {
+    const e = engineRef.current;
+    if (e?.isProbeMode()) e.setProbeMission(probeMission, probeTarget);
+  }, [probeMission, probeTarget]);
+  const phaseText = probe
+    ? (probe.phase === 'aim' ? t.phaseAim
+      : probe.phase === 'flying' ? t.phaseFlying
+      : probe.phase === 'success' ? t.phaseSuccess : t.phaseFail)
+    : '';
+  const missionText = (m: string) =>
+    m === 'flyby' ? t.missionFlyby : m === 'impact' ? t.missionImpact : t.missionOrbit;
   const scrubCenter = scrubAnchor ?? tel.simDays;
   const nowJd = JD_UNIX_EPOCH + BASE_DATE / 86400000 + tel.simDays;
 
@@ -273,6 +304,9 @@ export default function App() {
           </button>
           <button className={`hbtn wide ${timeOpen ? 'active' : ''}`} onClick={() => setTimeOpen(v => !v)}>
             {t.timeBtn}
+          </button>
+          <button className={`hbtn wide ${probe?.active ? 'active' : ''}`} onClick={onProbeToggle}>
+            {t.probeBtn}
           </button>
           <button className="hbtn wide" onClick={() => setLang(l => (l === 'zh' ? 'en' : 'zh'))}>
             {t.langButton}
@@ -422,6 +456,81 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {probe?.active && (
+        <div id="probepanel" className="ctl">
+          <div className="p-head">
+            <span className="p-title">{t.probePanel}</span>
+            <button className="hbtn" id="btn-reset" onClick={() => eng()?.exitProbeMode()}>{t.exitProbe}</button>
+          </div>
+
+          <div className="p-row">
+            <div className="p-meta"><span>{t.missionLabel}</span></div>
+            <div className="grid3">
+              {(['flyby', 'impact', 'captured'] as const).map(m => (
+                <button key={m} className={`hbtn ${probeMission === m ? 'active' : ''}`}
+                  onClick={() => setProbeMission(m)}>{missionText(m)}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-row">
+            <div className="p-meta"><span>{t.targetLabel}</span></div>
+            <select value={probeTarget} onChange={e => setProbeTarget(e.target.value)}>
+              {['mars', 'venus', 'mercury', 'jupiter', 'saturn', 'uranus', 'neptune'].map(id => (
+                <option key={id} value={id}>{bodyName(id, lang)}</option>
+              ))}
+              <option value="free">{t.freeTarget}</option>
+            </select>
+          </div>
+
+          <div className="d-row highlight"><span>{t.statusLabel}</span><span className="p-val">{phaseText}</span></div>
+
+          {probe.phase === 'aim' && (
+            <>
+              <div className="pp-help">{t.aimHelp}</div>
+              <div className="d-row"><span>Δv</span><span className="p-val">{probe.aimKms.toFixed(1)} km/s</span></div>
+            </>
+          )}
+
+          {probe.phase === 'flying' && (
+            <>
+              <div className="d-row"><span>{t.probeSpeedLabel}</span><span className="p-val">{probe.speedKms.toFixed(1)} km/s</span></div>
+              {probe.distTargetAU != null && (
+                <div className="d-row"><span>{t.distLabel}</span><span className="p-val">{probe.distTargetAU.toFixed(3)} AU</span></div>
+              )}
+              {probe.closestAU != null && (
+                <div className="d-row"><span>{t.closestLabel}</span><span className="p-val">{probe.closestAU.toFixed(4)} AU</span></div>
+              )}
+              <div className="d-row"><span>{t.elapsedLabel}</span><span className="p-val">{probe.elapsedYr.toFixed(2)} yr</span></div>
+              <div className="p-row" style={{ marginTop: 8 }}>
+                <div className="p-meta"><span>{t.fuelLabel}</span><span className="p-val">{probe.fuel.toFixed(1)} / {probe.fuelMax} km/s</span></div>
+                <div className="pp-fuel-track"><div className="pp-fuel" style={{ width: `${(probe.fuel / probe.fuelMax) * 100}%` }} /></div>
+              </div>
+              <div className="p-meta"><span>{t.burnLabel}</span></div>
+              <div className="grid3">
+                <button className="hbtn" onClick={() => eng()?.burnProbe('pro')}>{t.burnPro}</button>
+                <button className="hbtn" onClick={() => eng()?.burnProbe('radout')}>{t.burnRadOut}</button>
+                <button className="hbtn" onClick={() => eng()?.burnProbe('norm')}>{t.burnNorm}</button>
+                <button className="hbtn" onClick={() => eng()?.burnProbe('retro')}>{t.burnRetro}</button>
+                <button className="hbtn" onClick={() => eng()?.burnProbe('radin')}>{t.burnRadIn}</button>
+                <button className="hbtn" onClick={() => eng()?.burnProbe('normin')}>{t.burnNormIn}</button>
+              </div>
+            </>
+          )}
+
+          {(probe.phase === 'success' || probe.phase === 'fail') && (
+            <>
+              {probe.closestAU != null && (
+                <div className="d-row"><span>{t.closestLabel}</span><span className="p-val">{probe.closestAU.toFixed(4)} AU</span></div>
+              )}
+              <div className="d-row"><span>{t.elapsedLabel}</span><span className="p-val">{probe.elapsedYr.toFixed(2)} yr</span></div>
+              <div className="d-row highlight"><span>{t.scoreLabel}</span><span className="p-val">{probe.score ?? 0}</span></div>
+              <button className="hbtn wide" style={{ marginTop: 8 }} onClick={() => eng()?.resetProbe()}>{t.resetProbe}</button>
+            </>
+          )}
+        </div>
+      )}
 
       {!introGone && (
         <div id="intro" className={introFading ? 'done' : ''}>

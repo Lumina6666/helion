@@ -66,6 +66,35 @@ export interface Strings {
   predictError: string;
   predictDays: string;
   predictScore: string;
+  probeBtn: string;
+  probePanel: string;
+  missionLabel: string;
+  targetLabel: string;
+  missionFlyby: string;
+  missionImpact: string;
+  missionOrbit: string;
+  freeTarget: string;
+  fuelLabel: string;
+  burnLabel: string;
+  burnPro: string;
+  burnRetro: string;
+  burnRadOut: string;
+  burnRadIn: string;
+  burnNorm: string;
+  burnNormIn: string;
+  resetProbe: string;
+  exitProbe: string;
+  statusLabel: string;
+  phaseAim: string;
+  phaseFlying: string;
+  phaseSuccess: string;
+  phaseFail: string;
+  aimHelp: string;
+  closestLabel: string;
+  probeSpeedLabel: string;
+  elapsedLabel: string;
+  scoreLabel: string;
+  distLabel: string;
   toast: {
     cineOn: string;
     cineOff: string;
@@ -85,6 +114,21 @@ export interface Strings {
     resumed: string;
     timeJump: string;     // + date
     eventJump: string;    // + event description
+    probeAim: string;
+    probeExit: string;
+    probeReset: string;
+    probeLaunched: string;  // + km/s
+    probeMinSpeed: string;
+    noFuel: string;
+    burnDone: string;
+    out_flyby: string;
+    out_impact: string;
+    out_captured: string;
+    out_fail: string;
+    out_fail_sun: string;
+    out_fail_escaped: string;
+    out_fail_wrongbody: string;
+    out_fail_impact: string;
   };
 }
 
@@ -154,6 +198,35 @@ export const STR: Record<Lang, Strings> = {
     predictError: 'ERROR',
     predictDays: 'DAYS',
     predictScore: 'SCORE',
+    probeBtn: '🚀 PROBE',
+    probePanel: 'PROBE MISSION',
+    missionLabel: 'MISSION TYPE',
+    targetLabel: 'TARGET BODY',
+    missionFlyby: 'FLYBY',
+    missionImpact: 'IMPACT',
+    missionOrbit: 'ORBIT CAPTURE',
+    freeTarget: 'FREE FLIGHT',
+    fuelLabel: 'FUEL Δv',
+    burnLabel: 'CORRECTION BURN · 0.3 km/s',
+    burnPro: 'PRO+',
+    burnRetro: 'PRO−',
+    burnRadOut: 'RAD+',
+    burnRadIn: 'RAD−',
+    burnNorm: 'NRM+',
+    burnNormIn: 'NRM−',
+    resetProbe: 'RE-ARM',
+    exitProbe: 'EXIT',
+    statusLabel: 'STATUS',
+    phaseAim: 'AIMING',
+    phaseFlying: 'IN FLIGHT',
+    phaseSuccess: 'MISSION SUCCESS',
+    phaseFail: 'MISSION FAILED',
+    aimHelp: 'DRAG NEAR EARTH TO SET LAUNCH VECTOR (≥4 km/s), RELEASE TO FIRE',
+    closestLabel: 'CLOSEST APPROACH',
+    probeSpeedLabel: 'PROBE SPEED',
+    elapsedLabel: 'FLIGHT TIME',
+    scoreLabel: 'SCORE',
+    distLabel: 'TARGET RANGE',
     toast: {
       cineOn: 'CINEMATIC SEQUENCE — ENGAGED',
       cineOff: 'MANUAL CONTROL',
@@ -173,6 +246,21 @@ export const STR: Record<Lang, Strings> = {
       resumed: 'TIME FLOW RESUMED',
       timeJump: 'CLOCK SET — ',
       eventJump: 'SKY EVENT — ',
+      probeAim: 'PROBE MODE — DRAG NEAR EARTH TO AIM',
+      probeExit: 'PROBE MODE CLOSED',
+      probeReset: 'PROBE RE-ARMED AT EARTH',
+      probeLaunched: 'IGNITION — LAUNCH Δv ',
+      probeMinSpeed: 'LAUNCH ABORTED — NEED ≥4 km/s',
+      noFuel: 'PROPELLANT DEPLETED',
+      burnDone: 'COURSE CORRECTION — Δv 0.3 km/s',
+      out_flyby: 'FLYBY SUCCESS — TARGET REACHED',
+      out_impact: 'DIRECT HIT — IMPACT CONFIRMED',
+      out_captured: 'ORBIT CAPTURE ACHIEVED',
+      out_fail: 'MISSION FAILED',
+      out_fail_sun: 'LOST IN THE SUN',
+      out_fail_escaped: 'ESCAPED THE SOLAR SYSTEM',
+      out_fail_wrongbody: 'IMPACTED A NON-TARGET BODY',
+      out_fail_impact: 'CRASHED INTO TARGET — NO FLYBY',
     },
   },
   zh: {
@@ -240,6 +328,35 @@ export const STR: Record<Lang, Strings> = {
     predictError: '误差',
     predictDays: '天',
     predictScore: '得分',
+    probeBtn: '🚀 探测器',
+    probePanel: '探测器任务',
+    missionLabel: '任务类型',
+    targetLabel: '目标天体',
+    missionFlyby: '飞掠',
+    missionImpact: '撞击',
+    missionOrbit: '环绕捕获',
+    freeTarget: '自由飞行',
+    fuelLabel: '燃料 Δv',
+    burnLabel: '轨道修正 · 每次 0.3 km/s',
+    burnPro: '顺行+',
+    burnRetro: '顺行−',
+    burnRadOut: '径向+',
+    burnRadIn: '径向−',
+    burnNorm: '法向+',
+    burnNormIn: '法向−',
+    resetProbe: '重新装填',
+    exitProbe: '退出',
+    statusLabel: '状态',
+    phaseAim: '瞄准中',
+    phaseFlying: '飞行中',
+    phaseSuccess: '任务成功',
+    phaseFail: '任务失败',
+    aimHelp: '在地球附近拖拽设定发射方向与速度（≥4 km/s），松手点火',
+    closestLabel: '最近距离',
+    probeSpeedLabel: '探测器速度',
+    elapsedLabel: '飞行时间',
+    scoreLabel: '得分',
+    distLabel: '目标距离',
     toast: {
       cineOn: '电影运镜 — 已启动',
       cineOff: '手动控制',
@@ -259,6 +376,21 @@ export const STR: Record<Lang, Strings> = {
       resumed: '时间恢复流动',
       timeJump: '时钟已设定 — ',
       eventJump: '天象 — ',
+      probeAim: '探测器模式 — 在地球附近拖拽瞄准',
+      probeExit: '已退出探测器模式',
+      probeReset: '探测器已重新装填于地球',
+      probeLaunched: '点火 — 发射 Δv ',
+      probeMinSpeed: '发射中止 — 需要 ≥4 km/s',
+      noFuel: '燃料耗尽',
+      burnDone: '轨道修正 — Δv 0.3 km/s',
+      out_flyby: '飞掠成功 — 已抵达目标',
+      out_impact: '直接命中 — 撞击确认',
+      out_captured: '环绕捕获成功',
+      out_fail: '任务失败',
+      out_fail_sun: '坠入太阳',
+      out_fail_escaped: '飞出太阳系',
+      out_fail_wrongbody: '撞上非目标天体',
+      out_fail_impact: '撞上目标 — 飞掠失败',
     },
   },
 };

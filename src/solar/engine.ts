@@ -11,9 +11,14 @@ import type { TextureSet } from './textures';
 import { Ambience } from './audio';
 import { STR } from './i18n';
 import type { Lang } from './i18n';
-import { BASE_JD, helioLonLat, halleyScenePos, VOYAGERS, voyagerAU, voyagerScenePos } from './ephem';
+import { BASE_JD, helioLonLat, helioState, halleyScenePos, VOYAGERS, voyagerAU, voyagerScenePos, ELEMENTS } from './ephem';
 import { listUpcoming, solveEvent } from './events';
 import type { AstroEvent, EventType } from './events';
+import {
+  MU_SUN, KMS_TO_AUDAY, AUDAY_TO_KMS, PLANET_MU, PLANET_RADIUS_AU, FLYBY_THRESHOLD_AU,
+  stepProbe, adaptiveDt, distToBody, relSpeedKms, bodyVelocity, auToScenePos, predictOrbit,
+} from './probe';
+import type { ProbeState } from './probe';
 import type { VoyagerSpec } from './ephem';
 
 export interface HudSnapshot {
@@ -30,12 +35,32 @@ export interface HudSnapshot {
   params: { speed: number; orbitOpacity: number; planetScale: number; starfield: number };
 }
 
+export type ProbePhase = 'aim' | 'flying' | 'success' | 'fail';
+export type ProbeMission = 'flyby' | 'impact' | 'captured';
+
+export interface ProbeTelemetry {
+  active: boolean;
+  phase: ProbePhase;
+  outcome: string;          // '' | 'flyby' | 'impact' | 'captured' | 'sun' | 'escaped' | 'wrongbody'
+  mission: ProbeMission;
+  target: string;
+  fuel: number;             // km/s remaining
+  fuelMax: number;
+  speedKms: number;         // heliocentric speed
+  distTargetAU: number | null;
+  closestAU: number | null;
+  elapsedYr: number;
+  aimKms: number;
+  score: number | null;
+}
+
 export interface Telemetry {
   fps: number;
   distAU: number;
   flow: number;
   simDays: number;
   focusAU: number | null;
+  probe: ProbeTelemetry | null;
 }
 
 const BASE_DATE = Date.UTC(2026, 6, 17);
@@ -119,6 +144,31 @@ export class SolarEngine {
   private simDays = 0;
   private prevSpeed = 1;
   private eventCache: { fromDay: number; events: AstroEvent[] } | null = null;
+  private halleyLastDay = 0;
+  private probe: {
+    phase: ProbePhase;
+    outcome: string;
+    mission: ProbeMission;
+    target: string;
+    s: ProbeState;
+    fuel: number;
+    closestAU: number;
+    prevDist: number;
+    launchJd: number;
+    score: number | null;
+    mesh: THREE.Group;
+    arrow: THREE.ArrowHelper;
+    trail: THREE.Line;
+    trailAttr: THREE.BufferAttribute;
+    trailCount: number;
+    lastTrailPos: THREE.Vector3;
+    pred: THREE.Line;
+    aiming: boolean;
+    aimStart: { x: number; y: number };
+    aimKms: number;
+    aimVec: THREE.Vector3;
+    lastPredAt: number;
+  } | null = null;
   private fps = 60;
   private fpsAcc = 0; private fpsN = 0; private fpsTimer = 0;
   private telTimer = 0;
@@ -138,6 +188,7 @@ export class SolarEngine {
   constructor(canvas: HTMLCanvasElement, labelLayer: HTMLElement) {
     this.canvas = canvas;
     this.labelLayer = labelLayer;
+    (window as unknown as { __helion?: SolarEngine }).__helion = this; // debug/testing handle
   }
 
   // ------------------------------------------------------------- init
@@ -742,8 +793,21 @@ export class SolarEngine {
   private bindPointer() {
     this.canvas.addEventListener('pointerdown', (e) => {
       this.downPos = { x: e.clientX, y: e.clientY };
+      if (this.probe && this.probe.phase === 'aim' && e.button === 0) {
+        this.probe.aiming = true;
+        this.probe.aimStart = { x: e.clientX, y: e.clientY };
+        this.probe.aimKms = 0;
+      }
+    });
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (this.probe?.aiming) this.updateAim(e.clientX, e.clientY);
     });
     this.canvas.addEventListener('pointerup', (e) => {
+      if (this.probe?.aiming) {
+        this.probe.aiming = false;
+        this.launchProbe();
+        return;
+      }
       const dx = e.clientX - this.downPos.x, dy = e.clientY - this.downPos.y;
       if (dx * dx + dy * dy > 36) return; // drag, not click
       this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -935,6 +999,397 @@ export class SolarEngine {
     return solveEvent(type, a, b, BASE_JD + this.simDays);
   }
 
+  // ------------------------------------------------------------- probe mode
+  isProbeMode(): boolean { return this.probe !== null; }
+
+  enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
+    if (this.probe) this.exitProbeMode();
+    if (!this.ephemOn) this.ephemOn = true; // physics needs real positions
+
+    const mesh = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c8 }),
+    );
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite('rgba(255,240,200,0.9)', 'rgba(255,180,80,0.28)', 64),
+      transparent: true, depthWrite: false, opacity: 0.9,
+    }));
+    glow.scale.setScalar(1.7);
+    mesh.add(core, glow);
+
+    const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12000 * 3), 3));
+    trailGeo.setDrawRange(0, 0);
+    const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
+      color: 0xffd27f, transparent: true, opacity: 0.55,
+    }));
+    trail.frustumCulled = false;
+
+    const predGeo = new THREE.BufferGeometry();
+    predGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(900 * 3), 3));
+    predGeo.setDrawRange(0, 0);
+    const pred = new THREE.Line(predGeo, new THREE.LineBasicMaterial({
+      color: 0x7fdcff, transparent: true, opacity: 0.5,
+    }));
+    pred.frustumCulled = false;
+
+    // launch-vector arrow shown while aiming
+    const arrow = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 3, 0xffb35c, 0.9, 0.5,
+    );
+    arrow.visible = false;
+
+    this.scene.add(mesh, trail, pred, arrow);
+
+    const jd = BASE_JD + this.simDays;
+    const ep = helioState('earth', jd);
+    this.probe = {
+      phase: 'aim', outcome: '', mission, target,
+      s: { x: ep.x, y: ep.y, z: ep.z, vx: 0, vy: 0, vz: 0, jd },
+      fuel: 8, closestAU: Infinity, prevDist: Infinity, launchJd: jd, score: null,
+      mesh, arrow, trail, trailAttr: trailGeo.attributes.position as THREE.BufferAttribute,
+      trailCount: 0, lastTrailPos: new THREE.Vector3(), pred,
+      aiming: false, aimStart: { x: 0, y: 0 }, aimKms: 0,
+      aimVec: new THREE.Vector3(1, 0, 0), lastPredAt: 0,
+    };
+    this.syncProbeMesh();
+
+    // left mouse button is reserved for the launch drag while aiming
+    this.controls.mouseButtons = {
+      LEFT: undefined as unknown as THREE.MOUSE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE,
+    };
+    const earth = this.planets.find(p => p.spec.id === 'earth');
+    if (earth) this.focusPlanet(earth);
+    this.toast(STR[this.lang].toast.probeAim);
+    this.emitSnapshot();
+  }
+
+  exitProbeMode() {
+    if (!this.probe) return;
+    this.scene.remove(this.probe.mesh, this.probe.trail, this.probe.pred, this.probe.arrow);
+    this.probe.mesh.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+    });
+    this.probe.trail.geometry.dispose();
+    this.probe.pred.geometry.dispose();
+    this.probe.arrow.dispose();
+    this.probe = null;
+    this.controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    this.toast(STR[this.lang].toast.probeExit);
+    this.emitSnapshot();
+  }
+
+  setProbeMission(mission: ProbeMission, target: string) {
+    if (!this.probe) return;
+    this.probe.mission = mission;
+    this.probe.target = target;
+    if (this.probe.phase !== 'flying') this.resetProbe();
+  }
+
+  // back to the aiming phase at Earth's current position
+  resetProbe() {
+    const pr = this.probe;
+    if (!pr) return;
+    const jd = BASE_JD + this.simDays;
+    const ep = helioState('earth', jd);
+    pr.s = { x: ep.x, y: ep.y, z: ep.z, vx: 0, vy: 0, vz: 0, jd };
+    pr.phase = 'aim';
+    pr.outcome = '';
+    pr.fuel = 8;
+    pr.closestAU = Infinity;
+    pr.prevDist = Infinity;
+    pr.score = null;
+    pr.aimKms = 0;
+    pr.trailCount = 0;
+    pr.trail.geometry.setDrawRange(0, 0);
+    pr.pred.geometry.setDrawRange(0, 0);
+    pr.arrow.visible = false;
+    this.syncProbeMesh();
+    this.toast(STR[this.lang].toast.probeReset);
+  }
+
+  // aim drag — pointer move while aiming (called from bindPointer)
+  private updateAim(clientX: number, clientY: number) {
+    const pr = this.probe;
+    if (!pr || pr.phase !== 'aim') return;
+    const dx = clientX - pr.aimStart.x;
+    const dy = clientY - pr.aimStart.y;
+    const len = Math.hypot(dx, dy);
+    pr.aimKms = Math.min((len / 420) * 20, 20);
+    if (len > 4) {
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+      const v = right.multiplyScalar(dx).addScaledVector(up, -dy);
+      v.y = 0; // lock to the ecliptic plane
+      if (v.lengthSq() > 1e-6) pr.aimVec.copy(v.normalize());
+    }
+    // live prediction, throttled
+    const now = performance.now();
+    if (now - pr.lastPredAt > 90) {
+      pr.lastPredAt = now;
+      this.updatePrediction();
+    }
+    this.syncProbeArrow();
+  }
+
+  private launchStateFromAim(): ProbeState | null {
+    const pr = this.probe;
+    if (!pr) return null;
+    const jd = BASE_JD + this.simDays;
+    const ep = helioState('earth', jd);
+    const ev = bodyVelocity('earth', jd);
+    const dv = pr.aimKms * KMS_TO_AUDAY;
+    // scene planar dir (x, 0, z) → ecliptic (x, z, 0)
+    const dx = pr.aimVec.x, dy = pr.aimVec.z;
+    return {
+      x: ep.x + dx * 4.3e-4, y: ep.y + dy * 4.3e-4, z: ep.z,
+      vx: ev[0] + dx * dv, vy: ev[1] + dy * dv, vz: ev[2],
+      jd,
+    };
+  }
+
+  private updatePrediction() {
+    const pr = this.probe;
+    if (!pr) return;
+    const s0 = pr.phase === 'aim' ? this.launchStateFromAim() : { ...pr.s };
+    if (!s0 || (pr.phase === 'aim' && pr.aimKms < 4)) {
+      pr.pred.geometry.setDrawRange(0, 0);
+      return;
+    }
+    const res = predictOrbit(s0);
+    const attr = pr.pred.geometry.attributes.position as THREE.BufferAttribute;
+    attr.array.set(res.points.subarray(0, res.count * 3));
+    attr.needsUpdate = true;
+    pr.pred.geometry.setDrawRange(0, res.count);
+  }
+
+  private launchProbe() {
+    const pr = this.probe;
+    if (!pr || pr.phase !== 'aim') return;
+    if (pr.aimKms < 4) {
+      this.toast(STR[this.lang].toast.probeMinSpeed);
+      return;
+    }
+    const s0 = this.launchStateFromAim();
+    if (!s0) return;
+    pr.s = s0;
+    pr.launchJd = s0.jd;
+    pr.phase = 'flying';
+    pr.trailCount = 0;
+    pr.trail.geometry.setDrawRange(0, 0);
+    pr.arrow.visible = false;
+    this.updatePrediction();
+    this.toast(STR[this.lang].toast.probeLaunched + pr.aimKms.toFixed(1) + ' km/s');
+  }
+
+  // mid-course correction burn, 0.3 km/s per click
+  burnProbe(dir: 'pro' | 'retro' | 'radout' | 'radin' | 'norm' | 'normin') {
+    const pr = this.probe;
+    if (!pr || pr.phase !== 'flying') return;
+    const DV = 0.3;
+    if (pr.fuel < DV) {
+      this.toast(STR[this.lang].toast.noFuel);
+      return;
+    }
+    const s = pr.s;
+    const v = Math.hypot(s.vx, s.vy, s.vz);
+    const r = Math.hypot(s.x, s.y, s.z);
+    let bx = 0, by = 0, bz = 0;
+    if (dir === 'pro' || dir === 'retro') {
+      const k = (dir === 'pro' ? 1 : -1) / v;
+      bx = s.vx * k; by = s.vy * k; bz = s.vz * k;
+    } else if (dir === 'radout' || dir === 'radin') {
+      const k = (dir === 'radout' ? 1 : -1) / r;
+      bx = s.x * k; by = s.y * k; bz = s.z * k;
+    } else {
+      // orbit normal = r × v
+      let nx = s.y * s.vz - s.z * s.vy;
+      let ny = s.z * s.vx - s.x * s.vz;
+      let nz = s.x * s.vy - s.y * s.vx;
+      const nl = Math.hypot(nx, ny, nz);
+      if (nl < 1e-9) return;
+      const k = (dir === 'norm' ? 1 : -1) / nl;
+      bx = nx * k; by = ny * k; bz = nz * k;
+    }
+    const dv = DV * KMS_TO_AUDAY;
+    s.vx += bx * dv; s.vy += by * dv; s.vz += bz * dv;
+    pr.fuel -= DV;
+    this.updatePrediction();
+    this.toast(STR[this.lang].toast.burnDone);
+  }
+
+  private syncProbeMesh() {
+    const pr = this.probe;
+    if (!pr) return;
+    const p = auToScenePos(pr.s.x, pr.s.y, pr.s.z);
+    pr.mesh.position.set(p.x, p.y, p.z);
+    if (pr.phase === 'aim') {
+      // while aiming the probe sits at Earth's centre — lift the marker
+      // toward the camera so it stays visible above the surface
+      const earth = this.planets.find(pl => pl.spec.id === 'earth');
+      const lift = (earth ? earth.spec.radius * this.params.planetScale : 1) + 0.8;
+      const dir = this.camera.position.clone().sub(pr.mesh.position).normalize();
+      pr.mesh.position.addScaledVector(dir, lift);
+    }
+  }
+
+  // aim arrow from Earth along the chosen launch vector — refreshed every frame
+  private syncProbeArrow() {
+    const pr = this.probe;
+    if (!pr) return;
+    if (pr.phase !== 'aim' || pr.aimKms < 0.5) {
+      pr.arrow.visible = false;
+      return;
+    }
+    pr.arrow.visible = true;
+    pr.arrow.position.copy(pr.mesh.position);
+    pr.arrow.setDirection(pr.aimVec);
+    pr.arrow.setLength(1.2 + pr.aimKms * 0.5, 0.9, 0.5);
+  }
+
+  private pushProbeTrail() {
+    const pr = this.probe;
+    if (!pr || pr.trailCount >= 12000) return;
+    const p = auToScenePos(pr.s.x, pr.s.y, pr.s.z);
+    if (pr.trailCount > 0 && pr.lastTrailPos.distanceToSquared(new THREE.Vector3(p.x, p.y, p.z)) < 0.002) return;
+    pr.trailAttr.setXYZ(pr.trailCount, p.x, p.y, p.z);
+    pr.trailAttr.needsUpdate = true;
+    pr.trailCount++;
+    pr.lastTrailPos.set(p.x, p.y, p.z);
+    pr.trail.geometry.setDrawRange(0, pr.trailCount);
+  }
+
+  private endProbe(outcome: string, success: boolean) {
+    const pr = this.probe;
+    if (!pr || pr.phase !== 'flying') return;
+    pr.phase = success ? 'success' : 'fail';
+    pr.outcome = outcome;
+    const elapsedYr = (pr.s.jd - pr.launchJd) / 365.25;
+    if (success) {
+      let score = 0;
+      if (outcome === 'flyby') {
+        const th = FLYBY_THRESHOLD_AU[pr.target] ?? 0.05;
+        score = 500 + 400 * Math.max(0, 1 - pr.closestAU / th);
+      } else if (outcome === 'impact') score = 500;
+      else if (outcome === 'captured') score = 900;
+      score += pr.fuel * 30;                 // fuel conservation bonus
+      score -= elapsedYr * 25;               // faster is better
+      pr.score = Math.max(0, Math.round(score));
+    } else {
+      pr.score = 0;
+    }
+    const key = success ? ('out_' + outcome) : 'out_fail';
+    const t = STR[this.lang].toast as unknown as Record<string, string>;
+    this.toast((success ? t[key] : t.out_fail) ?? outcome);
+  }
+
+  private hillRadius(id: string): number {
+    const el = ELEMENTS[id];
+    const mu = PLANET_MU[id];
+    if (!el || !mu) return 0.01;
+    return el.a * Math.pow(mu / (3 * MU_SUN), 1 / 3);
+  }
+
+  private updateProbe() {
+    const pr = this.probe;
+    if (!pr) return;
+
+    if (pr.phase === 'flying') {
+      const jdTarget = BASE_JD + this.simDays;
+      // sim clock jumped backwards — reset to aiming
+      if (pr.s.jd - jdTarget > 2) {
+        this.resetProbe();
+        return;
+      }
+      let steps = 0;
+      let sinceTrail = 0;
+      while (pr.s.jd < jdTarget - 1e-9 && steps < 3000 && pr.phase === 'flying') {
+        const dt = Math.min(adaptiveDt(pr.s), jdTarget - pr.s.jd);
+        stepProbe(pr.s, dt);
+        steps++;
+        sinceTrail += dt;
+        // sample the trail *during* integration so high time-warp stays smooth
+        if (sinceTrail >= 2) { sinceTrail = 0; this.pushProbeTrail(); }
+        this.checkProbeEncounters();
+      }
+      this.syncProbeMesh();
+      this.pushProbeTrail();
+    } else if (pr.phase === 'aim') {
+      // keep the probe glued to Earth while aiming
+      const jd = BASE_JD + this.simDays;
+      const ep = helioState('earth', jd);
+      pr.s.x = ep.x; pr.s.y = ep.y; pr.s.z = ep.z; pr.s.jd = jd;
+      this.syncProbeMesh();
+      this.syncProbeArrow();
+    }
+  }
+
+  private checkProbeEncounters() {
+    const pr = this.probe;
+    if (!pr || pr.phase !== 'flying') return;
+    const s = pr.s;
+    const r = Math.hypot(s.x, s.y, s.z);
+    if (r < 0.02) return this.endProbe('sun', false);
+    if (r > 80) return this.endProbe('escaped', false);
+
+    // impacts against any body
+    for (const id in PLANET_RADIUS_AU) {
+      const d = distToBody(s, id);
+      if (d < PLANET_RADIUS_AU[id] * 5) {
+        if (id === pr.target && pr.mission === 'impact') return this.endProbe('impact', true);
+        if (id === pr.target) return this.endProbe('impact', false); // crashed instead of flying by
+        return this.endProbe('wrongbody', false);
+      }
+    }
+
+    if (pr.target === 'free' || !PLANET_RADIUS_AU[pr.target]) { pr.prevDist = Infinity; return; }
+    const d = distToBody(s, pr.target);
+    if (d < pr.closestAU) pr.closestAU = d;
+
+    if (pr.mission === 'flyby') {
+      const th = FLYBY_THRESHOLD_AU[pr.target] ?? 0.05;
+      // success at the moment we start receding inside the threshold
+      if (d > pr.prevDist && pr.closestAU < th) return this.endProbe('flyby', true);
+    } else if (pr.mission === 'captured') {
+      const hill = this.hillRadius(pr.target);
+      const mu = PLANET_MU[pr.target];
+      if (d < hill * 0.5) {
+        const vescKms = Math.sqrt(2 * mu / Math.max(d, 1e-6)) * AUDAY_TO_KMS;
+        if (relSpeedKms(s, pr.target) < vescKms * 0.95) return this.endProbe('captured', true);
+      }
+    }
+    pr.prevDist = d;
+  }
+
+  getProbeTelemetry(): ProbeTelemetry | null {
+    const pr = this.probe;
+    if (!pr) return null;
+    const speed = Math.hypot(pr.s.vx, pr.s.vy, pr.s.vz) * AUDAY_TO_KMS;
+    return {
+      active: true,
+      phase: pr.phase,
+      outcome: pr.outcome,
+      mission: pr.mission,
+      target: pr.target,
+      fuel: Math.round(pr.fuel * 10) / 10,
+      fuelMax: 8,
+      speedKms: Math.round(speed * 10) / 10,
+      distTargetAU: pr.target !== 'free' ? Math.round(distToBody(pr.s, pr.target) * 1000) / 1000 : null,
+      closestAU: pr.closestAU === Infinity ? null : Math.round(pr.closestAU * 10000) / 10000,
+      elapsedYr: Math.round(((pr.s.jd - pr.launchJd) / 365.25) * 100) / 100,
+      aimKms: Math.round(pr.aimKms * 10) / 10,
+      score: pr.score,
+    };
+  }
+
   getSnapshot(): HudSnapshot {
     const zh = this.lang === 'zh';
     const shot = CINE_SHOTS[this.cineShot];
@@ -1016,6 +1471,7 @@ export class SolarEngine {
       p.mesh.rotation.y += simDt * p.spec.spin * 0.9;
     }
     this.updateCometTrail();
+    this.updateProbe();
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
     if (this.moon) this.moon.pivot.rotation.y += simDt * (Math.PI * 2 / (0.074 * 24));
@@ -1058,6 +1514,7 @@ export class SolarEngine {
         flow: this.speed * DAYS_PER_SECOND,
         simDays: this.simDays,
         focusAU: focusVoy ? voyagerAU(focusVoy, this.simDays) : null,
+        probe: this.getProbeTelemetry(),
       });
     }
 
@@ -1108,14 +1565,28 @@ export class SolarEngine {
     const pts = this.halley.trailPts;
     const cur = this.halley.node.body.position;
     const last = pts[pts.length - 1];
-    if (!last || last.distanceToSquared(cur) > 0.02) {
+    if (!last) {
       pts.push(cur.clone());
-      if (pts.length > 220) pts.shift();
-      const attr = this.halley.trail.geometry.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < pts.length; i++) attr.setXYZ(i, pts[i].x, pts[i].y, pts[i].z);
-      attr.needsUpdate = true;
-      this.halley.trail.geometry.setDrawRange(0, pts.length);
+      this.halleyLastDay = this.simDays;
+    } else {
+      const gap = last.distanceTo(cur);
+      if (gap < 0.15) return;
+      // backfill intermediate samples so high time-warp still draws a smooth
+      // curve instead of long straight chords
+      const daySpan = this.simDays - this.halleyLastDay;
+      const n = Math.min(Math.max(Math.ceil(gap / 1.2), 1), 24);
+      for (let i = 1; i <= n; i++) {
+        const d = this.halleyLastDay + (daySpan * i) / n;
+        const p = halleyScenePos(d);
+        pts.push(new THREE.Vector3(p.x, p.y, p.z));
+        if (pts.length > 220) pts.shift();
+      }
+      this.halleyLastDay = this.simDays;
     }
+    const attr = this.halley.trail.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pts.length; i++) attr.setXYZ(i, pts[i].x, pts[i].y, pts[i].z);
+    attr.needsUpdate = true;
+    this.halley.trail.geometry.setDrawRange(0, pts.length);
   }
 
   private updateCine(dt: number) {
