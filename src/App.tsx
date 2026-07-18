@@ -176,6 +176,7 @@ export default function App() {
           else e.enterProbeMode(probeMissionRef.current, probeTargetRef.current);
           break;
         }
+        case 'v': eng.toggleProbeFollow(); break;
         case 'escape': eng.clearFocus(); break;
       }
     };
@@ -485,6 +486,10 @@ export default function App() {
           </div>
 
           <div className="d-row highlight"><span>{t.statusLabel}</span><span className="p-val">{phaseText}</span></div>
+          <button className={`hbtn wide ${probe.following ? 'active' : ''}`} style={{ marginTop: 6 }}
+            onClick={() => eng()?.toggleProbeFollow()}>
+            {t.followProbe}
+          </button>
 
           {probe.phase === 'aim' && (
             <>

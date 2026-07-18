@@ -84,6 +84,7 @@ export interface Strings {
   burnNormIn: string;
   resetProbe: string;
   exitProbe: string;
+  followProbe: string;
   statusLabel: string;
   phaseAim: string;
   phaseFlying: string;
@@ -121,6 +122,8 @@ export interface Strings {
     probeMinSpeed: string;
     noFuel: string;
     burnDone: string;
+    probeFollowOn: string;
+    probeFollowOff: string;
     out_flyby: string;
     out_impact: string;
     out_captured: string;
@@ -216,6 +219,7 @@ export const STR: Record<Lang, Strings> = {
     burnNormIn: 'NRM−',
     resetProbe: 'RE-ARM',
     exitProbe: 'EXIT',
+    followProbe: '📡 TRACK',
     statusLabel: 'STATUS',
     phaseAim: 'AIMING',
     phaseFlying: 'IN FLIGHT',
@@ -253,6 +257,8 @@ export const STR: Record<Lang, Strings> = {
       probeMinSpeed: 'LAUNCH ABORTED — NEED ≥4 km/s',
       noFuel: 'PROPELLANT DEPLETED',
       burnDone: 'COURSE CORRECTION — Δv 0.3 km/s',
+      probeFollowOn: 'CHASE CAM — TRACKING PROBE',
+      probeFollowOff: 'CHASE CAM RELEASED',
       out_flyby: 'FLYBY SUCCESS — TARGET REACHED',
       out_impact: 'DIRECT HIT — IMPACT CONFIRMED',
       out_captured: 'ORBIT CAPTURE ACHIEVED',
@@ -346,6 +352,7 @@ export const STR: Record<Lang, Strings> = {
     burnNormIn: '法向−',
     resetProbe: '重新装填',
     exitProbe: '退出',
+    followProbe: '📡 跟踪视角',
     statusLabel: '状态',
     phaseAim: '瞄准中',
     phaseFlying: '飞行中',
@@ -383,6 +390,8 @@ export const STR: Record<Lang, Strings> = {
       probeMinSpeed: '发射中止 — 需要 ≥4 km/s',
       noFuel: '燃料耗尽',
       burnDone: '轨道修正 — Δv 0.3 km/s',
+      probeFollowOn: '跟踪视角 — 锁定探测器',
+      probeFollowOff: '已解除跟踪视角',
       out_flyby: '飞掠成功 — 已抵达目标',
       out_impact: '直接命中 — 撞击确认',
       out_captured: '环绕捕获成功',

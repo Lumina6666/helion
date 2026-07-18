@@ -52,6 +52,7 @@ export interface ProbeTelemetry {
   elapsedYr: number;
   aimKms: number;
   score: number | null;
+  following: boolean;
 }
 
 export interface Telemetry {
@@ -145,6 +146,7 @@ export class SolarEngine {
   private prevSpeed = 1;
   private eventCache: { fromDay: number; events: AstroEvent[] } | null = null;
   private halleyLastDay = 0;
+  private probeFollow = false;
   private probe: {
     phase: ProbePhase;
     outcome: string;
@@ -157,6 +159,7 @@ export class SolarEngine {
     launchJd: number;
     score: number | null;
     mesh: THREE.Group;
+    beacon: THREE.Sprite;
     arrow: THREE.ArrowHelper;
     trail: THREE.Line;
     trailAttr: THREE.BufferAttribute;
@@ -904,6 +907,7 @@ export class SolarEngine {
 
   focusPlanet(node: PlanetNode) {
     this.setCine(false);
+    this.probeFollow = false;
     this.focus = node;
     this.tween = null;
     this.toast(STR[this.lang].toast.acquiring + this.planetName(node));
@@ -911,6 +915,7 @@ export class SolarEngine {
   }
 
   clearFocus() {
+    this.probeFollow = false;
     if (!this.focus) return;
     this.focus = null;
     const back = this.controls.target.clone().add(this.camera.position.clone().sub(this.controls.target).normalize().multiplyScalar(60));
@@ -1000,23 +1005,174 @@ export class SolarEngine {
   }
 
   // ------------------------------------------------------------- probe mode
+  // Generic deep-space probe — hexagonal bus, high-gain dish, twin solar
+  // wings, RTG, magnetometer boom, thruster cluster, beacon.
+  private buildProbeCraft(): THREE.Group {
+    const g = new THREE.Group();
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.35, metalness: 0.9, emissive: 0x241a04 });
+    const goldDark = new THREE.MeshStandardMaterial({ color: 0x8a6d1a, roughness: 0.5, metalness: 0.85 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xcfccc4, roughness: 0.7, metalness: 0.1, side: THREE.DoubleSide });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x4a5058, roughness: 0.55, metalness: 0.65 });
+    const panelBlue = new THREE.MeshStandardMaterial({ color: 0x1c3f74, roughness: 0.35, metalness: 0.55, emissive: 0x060d1d });
+    const rtgRed = new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.5, metalness: 0.4 });
+
+    const strut = (a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) => {
+      const d = b.clone().sub(a);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 6), mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      g.add(m);
+    };
+
+    // ---- hexagonal bus + decks
+    const bus = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.42, 6), gold);
+    g.add(bus);
+    const deckTop = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.29, 0.08, 6), goldDark);
+    deckTop.position.y = 0.25;
+    g.add(deckTop);
+    const deckBot = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.24, 0.08, 6), dark);
+    deckBot.position.y = -0.25;
+    g.add(deckBot);
+    // equipment boxes around the bus
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.03), i % 2 ? dark : goldDark);
+      box.position.set(Math.cos(a) * 0.31, (i % 3 - 1) * 0.1, Math.sin(a) * 0.31);
+      box.lookAt(Math.cos(a) * 2, box.position.y, Math.sin(a) * 2);
+      g.add(box);
+    }
+
+    // ---- solar wings: yoke + two panel arrays along ±x
+    for (const side of [-1, 1]) {
+      strut(new THREE.Vector3(side * 0.28, 0.05, 0), new THREE.Vector3(side * 0.5, 0.05, 0), 0.018, dark);
+      const wing = new THREE.Group();
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.02, 0.34), panelBlue);
+      wing.add(panel);
+      // frame rails + cell strips
+      for (const zz of [-0.17, 0, 0.17]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.024, 0.012), dark);
+        rail.position.z = zz;
+        wing.add(rail);
+      }
+      for (let i = 0; i < 5; i++) {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.024, 0.33), goldDark);
+        strip.position.x = -0.34 + i * 0.17;
+        wing.add(strip);
+      }
+      wing.position.set(side * 0.93, 0.05, 0);
+      wing.rotation.x = 0.12;
+      g.add(wing);
+    }
+
+    // ---- high-gain dish on top deck, faces +z
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 14; i++) {
+      const r = (i / 14) * 0.42;
+      pts.push(new THREE.Vector2(r, 0.04 + 0.55 * r * r));
+    }
+    const dish = new THREE.Mesh(new THREE.LatheGeometry(pts, 28), white);
+    dish.rotation.x = Math.PI / 2;
+    dish.position.set(0, 0.18, 0.22);
+    g.add(dish);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.011, 8, 36), dark);
+    rim.position.set(0, 0.18, 0.22 + 0.04 + 0.55 * 0.42 * 0.42);
+    g.add(rim);
+    const feedPos = new THREE.Vector3(0, 0.18, 0.48);
+    const feed = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.12, 10), dark);
+    feed.rotation.x = -Math.PI / 2;
+    feed.position.copy(feedPos);
+    g.add(feed);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + Math.PI / 2;
+      strut(new THREE.Vector3(Math.cos(a) * 0.4, 0.18 + Math.sin(a) * 0.4, 0.32), feedPos, 0.009, dark);
+    }
+
+    // ---- RTG on an aft boom
+    strut(new THREE.Vector3(-0.2, -0.1, -0.2), new THREE.Vector3(-0.55, -0.28, -0.42), 0.015, dark);
+    const rtg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 10), rtgRed);
+    rtg.position.set(-0.62, -0.32, -0.48);
+    rtg.rotation.z = 1.0;
+    g.add(rtg);
+    for (let i = 0; i < 5; i++) {
+      const fin = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.012, 12), rtgRed);
+      fin.position.set(-0.62 + (i - 2) * 0.045 * Math.cos(1.0), -0.32 - (i - 2) * 0.045 * Math.sin(1.0), -0.48);
+      fin.rotation.z = 1.0;
+      g.add(fin);
+    }
+
+    // ---- magnetometer boom (aft, long)
+    strut(new THREE.Vector3(0.22, -0.12, -0.2), new THREE.Vector3(0.6, -0.5, -0.62), 0.01, dark);
+    strut(new THREE.Vector3(0.6, -0.5, -0.62), new THREE.Vector3(0.92, -0.85, -0.98), 0.007, dark);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.07), dark);
+    mag.position.set(0.92, -0.85, -0.98);
+    g.add(mag);
+
+    // ---- omni whip + thrusters
+    strut(new THREE.Vector3(0, -0.28, 0.08), new THREE.Vector3(0, -0.72, 0.28), 0.005, dark);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.5;
+      const th = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.06, 8), dark);
+      th.position.set(Math.cos(a) * 0.24, -0.3, Math.sin(a) * 0.24);
+      th.rotation.x = Math.PI;
+      g.add(th);
+    }
+
+    return g;
+  }
+
   isProbeMode(): boolean { return this.probe !== null; }
+
+  // chase-camera on the probe
+  toggleProbeFollow(): boolean {
+    if (!this.probe) return false;
+    this.probeFollow = !this.probeFollow;
+    if (this.probeFollow) {
+      this.setCine(false);
+      this.focus = null; // probe cam takes over from planet focus
+      this.tween = null;
+      this.toast(STR[this.lang].toast.probeFollowOn);
+    } else {
+      this.toast(STR[this.lang].toast.probeFollowOff);
+    }
+    return this.probeFollow;
+  }
+
+  private followProbeCam(dt: number) {
+    const pr = this.probe!;
+    const world = pr.mesh.position;
+    const prevTarget = this.controls.target.clone();
+    this.controls.target.lerp(world, 1 - Math.exp(-dt * 6));
+    const delta = this.controls.target.clone().sub(prevTarget);
+    this.camera.position.add(delta);
+    // hold a comfortable chase distance
+    const desired = 4.2;
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const d = offset.length();
+    offset.setLength(THREE.MathUtils.lerp(d, desired, 1 - Math.exp(-dt * 1.2)));
+    this.camera.position.copy(this.controls.target).add(offset);
+  }
 
   enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
     if (this.probe) this.exitProbeMode();
     if (!this.ephemOn) this.ephemOn = true; // physics needs real positions
 
     const mesh = new THREE.Group();
-    const core = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2, 12, 8),
-      new THREE.MeshBasicMaterial({ color: 0xfff2c8 }),
-    );
+    const craft = this.buildProbeCraft();
+    mesh.add(craft);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowSprite('rgba(255,240,200,0.9)', 'rgba(255,180,80,0.28)', 64),
+      transparent: true, depthWrite: false, opacity: 0.55,
+    }));
+    glow.scale.setScalar(2.4);
+    mesh.add(glow);
+    // blinking navigation beacon on top of the bus
+    const beacon = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite('rgba(255,90,70,1)', 'rgba(255,60,40,0.25)', 32),
       transparent: true, depthWrite: false, opacity: 0.9,
     }));
-    glow.scale.setScalar(1.7);
-    mesh.add(core, glow);
+    beacon.scale.setScalar(0.35);
+    beacon.position.y = 0.42;
+    mesh.add(beacon);
 
     const trailGeo = new THREE.BufferGeometry();
     trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12000 * 3), 3));
@@ -1048,7 +1204,7 @@ export class SolarEngine {
       phase: 'aim', outcome: '', mission, target,
       s: { x: ep.x, y: ep.y, z: ep.z, vx: 0, vy: 0, vz: 0, jd },
       fuel: 8, closestAU: Infinity, prevDist: Infinity, launchJd: jd, score: null,
-      mesh, arrow, trail, trailAttr: trailGeo.attributes.position as THREE.BufferAttribute,
+      mesh, beacon, arrow, trail, trailAttr: trailGeo.attributes.position as THREE.BufferAttribute,
       trailCount: 0, lastTrailPos: new THREE.Vector3(), pred,
       aiming: false, aimStart: { x: 0, y: 0 }, aimKms: 0,
       aimVec: new THREE.Vector3(1, 0, 0), lastPredAt: 0,
@@ -1078,6 +1234,7 @@ export class SolarEngine {
     this.probe.pred.geometry.dispose();
     this.probe.arrow.dispose();
     this.probe = null;
+    this.probeFollow = false;
     this.controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.DOLLY,
@@ -1187,6 +1344,9 @@ export class SolarEngine {
     pr.trail.geometry.setDrawRange(0, 0);
     pr.arrow.visible = false;
     this.updatePrediction();
+    // chase the probe from ignition
+    this.focus = null;
+    this.probeFollow = true;
     this.toast(STR[this.lang].toast.probeLaunched + pr.aimKms.toFixed(1) + ' km/s');
   }
 
@@ -1322,6 +1482,10 @@ export class SolarEngine {
       }
       this.syncProbeMesh();
       this.pushProbeTrail();
+      // dish tracks the Sun (Earth relay) while cruising; beacon blinks
+      pr.mesh.lookAt(0, 0, 0);
+      const bm = pr.beacon.material as THREE.SpriteMaterial;
+      bm.opacity = 0.25 + 0.75 * Math.abs(Math.sin(this.pulseT * 4));
     } else if (pr.phase === 'aim') {
       // keep the probe glued to Earth while aiming
       const jd = BASE_JD + this.simDays;
@@ -1387,6 +1551,7 @@ export class SolarEngine {
       elapsedYr: Math.round(((pr.s.jd - pr.launchJd) / 365.25) * 100) / 100,
       aimKms: Math.round(pr.aimKms * 10) / 10,
       score: pr.score,
+      following: this.probeFollow,
     };
   }
 
@@ -1485,6 +1650,7 @@ export class SolarEngine {
     // camera modes
     if (this.cine) this.updateCine(dt);
     else if (this.tween) this.updateTween(dt);
+    else if (this.probeFollow && this.probe) this.followProbeCam(dt);
     else if (this.focus) this.followFocus(dt);
 
     if (this.orbit && !this.cine) {
