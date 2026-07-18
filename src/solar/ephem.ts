@@ -29,10 +29,10 @@ export function solveKepler(M: number, e: number): number {
   return E;
 }
 
-// Heliocentric ecliptic longitude & latitude (radians) for a planet at Julian date jd.
-export function helioLonLat(id: string, jd: number): { lon: number; lat: number } {
+// Heliocentric ecliptic cartesian state (AU) for a planet at Julian date jd.
+export function helioState(id: string, jd: number): { x: number; y: number; z: number } {
   const el = ELEMENTS[id];
-  if (!el) return { lon: 0, lat: 0 };
+  if (!el) return { x: 0, y: 0, z: 0 };
   const T = (jd - J2000) / 36525;
   const a = el.a + el.da * T;
   const e = el.e + el.de * T;
@@ -46,9 +46,18 @@ export function helioLonLat(id: string, jd: number): { lon: number; lat: number 
   const E = solveKepler(M, e);
   const nu = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2));
   const r = a * (1 - e * Math.cos(E));
-  const x = r * (Math.cos(O) * Math.cos(w + nu) - Math.sin(O) * Math.sin(w + nu) * Math.cos(I));
-  const y = r * (Math.sin(O) * Math.cos(w + nu) + Math.cos(O) * Math.sin(w + nu) * Math.cos(I));
-  const z = r * (Math.sin(w + nu) * Math.sin(I));
+  return {
+    x: r * (Math.cos(O) * Math.cos(w + nu) - Math.sin(O) * Math.sin(w + nu) * Math.cos(I)),
+    y: r * (Math.sin(O) * Math.cos(w + nu) + Math.cos(O) * Math.sin(w + nu) * Math.cos(I)),
+    z: r * (Math.sin(w + nu) * Math.sin(I)),
+  };
+}
+
+// Heliocentric ecliptic longitude & latitude (radians) for a planet at Julian date jd.
+export function helioLonLat(id: string, jd: number): { lon: number; lat: number } {
+  const { x, y, z } = helioState(id, jd);
+  const r = Math.hypot(x, y, z);
+  if (r === 0) return { lon: 0, lat: 0 };
   return { lon: Math.atan2(y, x), lat: Math.asin(z / r) };
 }
 

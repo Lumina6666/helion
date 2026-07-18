@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry } from './solar/engine';
-import { VIEWS, DOSSIER } from './solar/data';
+import { VIEWS, DOSSIER, PLANETS } from './solar/data';
+import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
+import type { AstroEvent } from './solar/events';
 import { STR } from './solar/i18n';
 import type { Lang } from './solar/i18n';
 
 const BASE_DATE = Date.UTC(2026, 6, 17);
 const LANG_KEY = 'helion-lang';
+const JD_UNIX_EPOCH = 2440587.5;
+const SCRUB_HALF = 30 * 365.25; // ±30 years on the timeline
 
 function fmtSimDate(days: number): string {
   const d = new Date(BASE_DATE + days * 86400000);
@@ -15,6 +19,26 @@ function fmtSimDate(days: number): string {
   const dd = String(d.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
+
+function fmtJd(jd: number): string {
+  return fmtSimDate((jd - JD_UNIX_EPOCH) - BASE_DATE / 86400000);
+}
+
+// localized body display name (planets + sun + halley)
+function bodyName(id: string, lang: Lang): string {
+  if (id === 'sun') return lang === 'zh' ? '太阳' : 'Sun';
+  const p = PLANETS.find(pl => pl.id === id);
+  if (!p) return id;
+  return lang === 'zh' ? p.cn : p.name;
+}
+
+interface PredictTarget { type: 'opposition' | 'conjunction' | 'perihelion'; a: string; b: string }
+
+const PREDICT_OPTIONS: PredictTarget[] = [
+  ...OPP_PLANETS.map(p => ({ type: 'opposition' as const, a: 'earth', b: p })),
+  ...CONJ_PAIRS.map(([a, b]) => ({ type: 'conjunction' as const, a, b })),
+  { type: 'perihelion', a: 'sun', b: 'halley' },
+];
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,6 +61,14 @@ export default function App() {
   const [loadPct, setLoadPct] = useState(0);
   const [minTime, setMinTime] = useState(false);
   const [forceIntro, setForceIntro] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [events, setEvents] = useState<AstroEvent[]>([]);
+  const [jumpDate, setJumpDate] = useState('');
+  const [predIdx, setPredIdx] = useState(0);
+  const [predDate, setPredDate] = useState('');
+  const [predResult, setPredResult] = useState<{ actual: string; errDays: number; score: number } | null>(null);
+  const [scrubAnchor, setScrubAnchor] = useState<number | null>(null);
+  const [scrubVal, setScrubVal] = useState(0);
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem(LANG_KEY) as Lang) || 'zh'; } catch { return 'zh'; }
   });
@@ -98,11 +130,28 @@ export default function App() {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [ready, minTime, forceIntro]);
 
+  // poll upcoming sky events while the time panel is open
+  useEffect(() => {
+    if (!timeOpen) return;
+    const pull = () => setEvents(engineRef.current?.getUpcomingEvents(6) ?? []);
+    pull();
+    const iv = setInterval(pull, 1000);
+    return () => clearInterval(iv);
+  }, [timeOpen]);
+
   // keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const eng = engineRef.current;
       if (!eng) return;
+      if (e.key === ' ') {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'BUTTON') {
+          e.preventDefault();
+          eng.togglePause();
+        }
+        return;
+      }
       const k = e.key.toLowerCase();
       if (k >= '1' && k <= '4') { eng.setView(Number(k) - 1); return; }
       switch (k) {
@@ -114,6 +163,7 @@ export default function App() {
         case 'h': setHudOn(v => !v); break;
         case 'e': eng.toggleEphemeris(); break;
         case 'd': setDossierOpen(v => !v); break;
+        case 't': setTimeOpen(v => !v); break;
         case 'escape': eng.clearFocus(); break;
       }
     };
@@ -130,6 +180,40 @@ export default function App() {
   const eng = () => engineRef.current;
   const p = snap?.params ?? { speed: 1, orbitOpacity: 0.55, planetScale: 1, starfield: 0.9 };
   const dossier = focusId !== 'sun' ? DOSSIER[focusId] : undefined;
+
+  // ---- time panel helpers
+  const evDesc = (ev: { type: string; a: string; b: string }): string => {
+    const tpl = ev.type === 'opposition' ? t.evOpposition
+      : ev.type === 'conjunction' ? t.evConjunction : t.evPerihelion;
+    return tpl.replace('{a}', bodyName(ev.a, lang)).replace('{b}', bodyName(ev.b, lang));
+  };
+  const onPauseToggle = () => {
+    const paused = eng()?.togglePause();
+    if (paused != null) showToast(paused ? t.toast.paused : t.toast.resumed);
+  };
+  const onJumpDate = () => {
+    if (!jumpDate) return;
+    eng()?.jumpToDate(new Date(jumpDate + 'T00:00:00Z'));
+    showToast(t.toast.timeJump + jumpDate);
+  };
+  const onNextEvent = () => {
+    const ev = eng()?.jumpToNextEvent();
+    if (ev) showToast(t.toast.eventJump + evDesc(ev) + ' · ' + fmtJd(ev.jd));
+  };
+  const onPredict = () => {
+    const opt = PREDICT_OPTIONS[predIdx];
+    const jd = eng()?.solvePrediction(opt.type, opt.a, opt.b);
+    if (jd == null || !predDate) return;
+    const userMs = Date.parse(predDate + 'T00:00:00Z');
+    const err = Math.abs((jd - JD_UNIX_EPOCH) * 86400000 - userMs) / 86400000;
+    setPredResult({
+      actual: fmtJd(jd),
+      errDays: Math.round(err * 10) / 10,
+      score: Math.max(0, Math.round(100 - err)),
+    });
+  };
+  const scrubCenter = scrubAnchor ?? tel.simDays;
+  const nowJd = JD_UNIX_EPOCH + BASE_DATE / 86400000 + tel.simDays;
 
   return (
     <>
@@ -186,6 +270,9 @@ export default function App() {
           </button>
           <button className={`hbtn wide ${snap?.ephemeris ? 'active' : ''}`} onClick={() => eng()?.toggleEphemeris()}>
             🛰 {t.ephemeris}{snap?.ephemeris ? t.ephemOn : t.ephemOff}
+          </button>
+          <button className={`hbtn wide ${timeOpen ? 'active' : ''}`} onClick={() => setTimeOpen(v => !v)}>
+            {t.timeBtn}
           </button>
           <button className="hbtn wide" onClick={() => setLang(l => (l === 'zh' ? 'en' : 'zh'))}>
             {t.langButton}
@@ -255,6 +342,86 @@ export default function App() {
           <div className="d-blurb">{lang === 'zh' ? dossier.blurbCn : dossier.blurb}</div>
         </div>
       )}
+
+      <div id="timepanel" className={timeOpen ? 'ctl' : 'ctl hidden'}>
+        <div className="p-head">
+          <span className="p-title">{t.timePanel}</span>
+          <button className="hbtn" id="btn-reset" onClick={() => setTimeOpen(false)}>{t.dossierClose}</button>
+        </div>
+
+        <div className="grid2">
+          <button className={`hbtn ${p.speed === 0 ? 'active' : ''}`} onClick={onPauseToggle}>
+            {p.speed === 0 ? t.resume : t.pause}
+          </button>
+          <button className={`hbtn ${p.speed < 0 ? 'active' : ''}`}
+            onClick={() => eng()?.setTimeScale(p.speed < 0 ? Math.abs(p.speed) : -Math.abs(p.speed || 1))}>
+            {t.reverse}
+          </button>
+        </div>
+
+        <div className="p-row">
+          <div className="p-meta"><span>{t.speedLabel}</span><span className="p-val">×{p.speed.toFixed(0)}</span></div>
+          <div className="grid4">
+            {[1, 10, 100, 1000].map(m => (
+              <button key={m} className={`hbtn ${Math.abs(p.speed) === m ? 'active' : ''}`}
+                onClick={() => eng()?.setTimeScale(p.speed < 0 ? -m : m)}>×{m}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-row">
+          <div className="p-meta"><span>{t.dateLabel}</span></div>
+          <div className="tp-datejump">
+            <input type="date" value={jumpDate} onChange={e => setJumpDate(e.target.value)} />
+            <button className="hbtn" onClick={onJumpDate}>{t.jumpBtn}</button>
+          </div>
+        </div>
+
+        <div className="p-row">
+          <div className="p-meta"><span>{t.timelineLabel}</span><span className="p-val">{fmtSimDate(scrubAnchor !== null ? scrubVal : tel.simDays)}</span></div>
+          <input type="range"
+            min={scrubCenter - SCRUB_HALF} max={scrubCenter + SCRUB_HALF} step={1}
+            value={scrubAnchor !== null ? scrubVal : tel.simDays}
+            onPointerDown={() => { setScrubAnchor(tel.simDays); setScrubVal(tel.simDays); }}
+            onChange={e => { const v = Number(e.target.value); setScrubVal(v); eng()?.scrubToDay(v); }}
+            onPointerUp={() => setScrubAnchor(null)} />
+        </div>
+
+        <button className="hbtn wide" onClick={onNextEvent}>{t.nextEventBtn}</button>
+
+        <div className="p-row">
+          <div className="p-meta"><span>{t.upcoming}</span></div>
+          {events.map((ev, i) => (
+            <div className="tp-ev" key={`${ev.type}${ev.a}${ev.b}${i}`}>
+              <span className="tp-ev-date">{fmtJd(ev.jd)}</span>
+              <span className="tp-ev-desc">{evDesc(ev)}</span>
+              <span className="p-val">T-{Math.max(0, Math.round(ev.jd - nowJd))}{t.predictDays}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-row tp-predict">
+          <div className="p-meta"><span>{t.predictTitle}</span></div>
+          <div className="p-meta"><span>{t.predictEvent}</span></div>
+          <select value={predIdx} onChange={e => { setPredIdx(Number(e.target.value)); setPredResult(null); }}>
+            {PREDICT_OPTIONS.map((opt, i) => (
+              <option key={i} value={i}>{evDesc(opt)}</option>
+            ))}
+          </select>
+          <div className="p-meta" style={{ marginTop: 6 }}><span>{t.predictDate}</span></div>
+          <div className="tp-datejump">
+            <input type="date" value={predDate} onChange={e => setPredDate(e.target.value)} />
+            <button className="hbtn" onClick={onPredict}>{t.predictGo}</button>
+          </div>
+          {predResult && (
+            <div className="tp-result">
+              <div className="d-row"><span>{t.predictActual}</span><span className="p-val">{predResult.actual}</span></div>
+              <div className="d-row"><span>{t.predictError}</span><span className="p-val">{predResult.errDays} {t.predictDays}</span></div>
+              <div className="d-row highlight"><span>{t.predictScore}</span><span className="p-val">{predResult.score}</span></div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {!introGone && (
         <div id="intro" className={introFading ? 'done' : ''}>

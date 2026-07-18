@@ -12,6 +12,8 @@ import { Ambience } from './audio';
 import { STR } from './i18n';
 import type { Lang } from './i18n';
 import { BASE_JD, helioLonLat, halleyScenePos, VOYAGERS, voyagerAU, voyagerScenePos } from './ephem';
+import { listUpcoming, solveEvent } from './events';
+import type { AstroEvent, EventType } from './events';
 import type { VoyagerSpec } from './ephem';
 
 export interface HudSnapshot {
@@ -115,6 +117,8 @@ export class SolarEngine {
   private focusOffset = new THREE.Vector3();
   private speed = 1;
   private simDays = 0;
+  private prevSpeed = 1;
+  private eventCache: { fromDay: number; events: AstroEvent[] } | null = null;
   private fps = 60;
   private fpsAcc = 0; private fpsN = 0; private fpsTimer = 0;
   private telTimer = 0;
@@ -872,6 +876,63 @@ export class SolarEngine {
     this.setParam('planetScale', 1);
     this.setParam('speed', 1);
     this.toast(STR[this.lang].toast.reset);
+  }
+
+  // ------------------------------------------------------------- time controls
+  setTimeScale(mult: number) {
+    if (mult !== 0) this.prevSpeed = mult;
+    this.setParam('speed', mult);
+  }
+
+  togglePause(): boolean {
+    const paused = this.params.speed !== 0;
+    this.setTimeScale(paused ? 0 : (this.prevSpeed || 1));
+    return paused;
+  }
+
+  // Jump the simulation clock to an absolute date (UTC).
+  jumpToDate(d: Date) {
+    this.simDays = (d.getTime() - BASE_DATE) / 86400000;
+    this.eventCache = null;
+    this.resetHalleyTrail();
+    this.emitSnapshot();
+  }
+
+  // Scrub relative to the current sim day (timeline dragging).
+  scrubToDay(day: number) {
+    this.simDays = day;
+    this.eventCache = null;
+    this.resetHalleyTrail();
+    this.emitSnapshot();
+  }
+
+  private resetHalleyTrail() {
+    if (!this.halley) return;
+    this.halley.trailPts.length = 0;
+    this.halley.trail.geometry.setDrawRange(0, 0);
+  }
+
+  // Upcoming sky events, cached per quarter-day so the UI can poll cheaply.
+  getUpcomingEvents(count = 8): AstroEvent[] {
+    const jd = BASE_JD + this.simDays;
+    const key = Math.floor(this.simDays * 4);
+    if (!this.eventCache || this.eventCache.fromDay !== key) {
+      this.eventCache = { fromDay: key, events: listUpcoming(jd, count) };
+    }
+    return this.eventCache.events;
+  }
+
+  // Jump the clock to the next event; returns it so the UI can announce it.
+  jumpToNextEvent(): AstroEvent | null {
+    const ev = this.getUpcomingEvents(1)[0];
+    if (!ev) return null;
+    this.jumpToDate(new Date((ev.jd - 2440587.5) * 86400000));
+    return ev;
+  }
+
+  // Prediction game — solve the real date of the chosen event from *now*.
+  solvePrediction(type: EventType, a: string, b: string): number | null {
+    return solveEvent(type, a, b, BASE_JD + this.simDays);
   }
 
   getSnapshot(): HudSnapshot {

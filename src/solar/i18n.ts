@@ -44,6 +44,28 @@ export interface Strings {
   diameter: string;
   vsEarth: string;
   rangeNow: string;
+  timeBtn: string;
+  timePanel: string;
+  pause: string;
+  resume: string;
+  reverse: string;
+  speedLabel: string;
+  dateLabel: string;
+  jumpBtn: string;
+  timelineLabel: string;
+  nextEventBtn: string;
+  upcoming: string;
+  evOpposition: string;   // {b} = planet name
+  evConjunction: string;  // {a} {b} = planet names
+  evPerihelion: string;   // {b} = body name
+  predictTitle: string;
+  predictEvent: string;
+  predictDate: string;
+  predictGo: string;
+  predictActual: string;
+  predictError: string;
+  predictDays: string;
+  predictScore: string;
   toast: {
     cineOn: string;
     cineOff: string;
@@ -59,6 +81,10 @@ export interface Strings {
     reset: string;
     ephemOn: string;
     ephemOff: string;
+    paused: string;
+    resumed: string;
+    timeJump: string;     // + date
+    eventJump: string;    // + event description
   };
 }
 
@@ -106,6 +132,28 @@ export const STR: Record<Lang, Strings> = {
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
+    timeBtn: '⏱ TIME',
+    timePanel: 'TIME CONTROL',
+    pause: '⏸ PAUSE',
+    resume: '▶ RESUME',
+    reverse: '◀◀ REVERSE',
+    speedLabel: 'SPEED PRESET',
+    dateLabel: 'JUMP TO DATE (UTC)',
+    jumpBtn: 'JUMP',
+    timelineLabel: 'TIMELINE SCRUB · ±30 YR',
+    nextEventBtn: '⏭ NEXT SKY EVENT',
+    upcoming: 'UPCOMING EVENTS',
+    evOpposition: '{b} AT OPPOSITION',
+    evConjunction: '{a}–{b} CONJUNCTION',
+    evPerihelion: '{b} PERIHELION',
+    predictTitle: 'EVENT FORECAST GAME',
+    predictEvent: 'EVENT',
+    predictDate: 'YOUR PREDICTION',
+    predictGo: 'VERIFY',
+    predictActual: 'ACTUAL DATE',
+    predictError: 'ERROR',
+    predictDays: 'DAYS',
+    predictScore: 'SCORE',
     toast: {
       cineOn: 'CINEMATIC SEQUENCE — ENGAGED',
       cineOff: 'MANUAL CONTROL',
@@ -121,6 +169,10 @@ export const STR: Record<Lang, Strings> = {
       reset: 'PARAMETERS RESET',
       ephemOn: 'REAL EPHEMERIS — TRUE LONGITUDES',
       ephemOff: 'SIMPLIFIED ORBITS',
+      paused: 'TIME FROZEN',
+      resumed: 'TIME FLOW RESUMED',
+      timeJump: 'CLOCK SET — ',
+      eventJump: 'SKY EVENT — ',
     },
   },
   zh: {
@@ -166,6 +218,28 @@ export const STR: Record<Lang, Strings> = {
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',
+    timeBtn: '⏱ 时间',
+    timePanel: '时间控制',
+    pause: '⏸ 暂停',
+    resume: '▶ 继续',
+    reverse: '◀◀ 倒放',
+    speedLabel: '倍率档位',
+    dateLabel: '跳转到日期 (UTC)',
+    jumpBtn: '跳转',
+    timelineLabel: '时间轴拖动 · ±30 年',
+    nextEventBtn: '⏭ 跳到下一事件',
+    upcoming: '即将发生',
+    evOpposition: '{b}冲日',
+    evConjunction: '{a}与{b}会合',
+    evPerihelion: '{b}过近日点',
+    predictTitle: '事件预测挑战',
+    predictEvent: '事件',
+    predictDate: '你的预测日期',
+    predictGo: '验证',
+    predictActual: '实际日期',
+    predictError: '误差',
+    predictDays: '天',
+    predictScore: '得分',
     toast: {
       cineOn: '电影运镜 — 已启动',
       cineOff: '手动控制',
@@ -181,6 +255,10 @@ export const STR: Record<Lang, Strings> = {
       reset: '参数已重置',
       ephemOn: '真实星历 — 行星切换到真实黄经位置',
       ephemOff: '简化轨道模式',
+      paused: '时间已冻结',
+      resumed: '时间恢复流动',
+      timeJump: '时钟已设定 — ',
+      eventJump: '天象 — ',
     },
   },
 };
