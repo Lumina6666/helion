@@ -32,6 +32,8 @@ export interface Strings {
   starfield: string;
   introTag: string;
   introQuote: string;
+  loading: string;
+  attrib: string;
   langButton: string;
   sun: string;
   ephemeris: string;
@@ -92,6 +94,8 @@ export const STR: Record<Lang, Strings> = {
     starfield: 'STARFIELD',
     introTag: 'REAL-TIME ORBITAL SIMULATION',
     introQuote: '“The cosmos is within us. We are made of star-stuff.” — Carl Sagan',
+    loading: 'LOADING MAPS',
+    attrib: 'PLANET MAPS © SSS (CC BY 4.0) · NASA/JPL',
     langButton: '🌐 界面语言: EN',
     sun: 'SUN',
     ephemeris: 'EPHEMERIS: ',
@@ -150,6 +154,8 @@ export const STR: Record<Lang, Strings> = {
     starfield: '星空密度',
     introTag: '实时轨道模拟',
     introQuote: '“宇宙就在我们之中，我们由星尘构成。” — 卡尔·萨根',
+    loading: '加载贴图',
+    attrib: '行星贴图 © SOLAR SYSTEM SCOPE (CC BY 4.0) · NASA/JPL',
     langButton: '🌐 界面语言: 中文',
     sun: '太阳',
     ephemeris: '星历: ',

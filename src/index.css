@@ -581,3 +581,26 @@ body { position: fixed; inset: 0; }
     width: min(300px, calc(100vw - 32px));
   }
 }
+
+/* ------------------------------------------------------ loading & attribution */
+.intro-load {
+  margin-top: 22px;
+  font-size: 9.5px;
+  letter-spacing: .32em;
+  color: rgba(127, 220, 255, .55);
+  animation: loadPulse 1.6s ease-in-out infinite;
+}
+@keyframes loadPulse {
+  0%, 100% { opacity: .45; }
+  50% { opacity: 1; }
+}
+
+#params .p-attrib {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(127, 220, 255, .14);
+  font-size: 7px;
+  letter-spacing: .1em;
+  line-height: 1.6;
+  color: rgba(127, 220, 255, .32);
+}

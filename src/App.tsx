@@ -33,6 +33,10 @@ export default function App() {
   const [fatal, setFatal] = useState('');
   const [clock, setClock] = useState('00:00:00');
   const [hintShow, setHintShow] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [loadPct, setLoadPct] = useState(0);
+  const [minTime, setMinTime] = useState(false);
+  const [forceIntro, setForceIntro] = useState(false);
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem(LANG_KEY) as Lang) || 'zh'; } catch { return 'zh'; }
   });
@@ -53,6 +57,8 @@ export default function App() {
     engine.onTelemetry = setTel;
     engine.onToast = showToast;
     engine.onFatal = (m) => setFatal(m);
+    engine.onProgress = (p) => setLoadPct(Math.round(p * 100));
+    engine.onReady = () => setReady(true);
     engine.setLang(langRef.current);
     const initTimer = setTimeout(() => engine.init(), 60);
     return () => { clearTimeout(initTimer); engine.dispose(); engineRef.current = null; };
@@ -77,13 +83,20 @@ export default function App() {
     return () => clearInterval(iv);
   }, []);
 
-  // intro lifecycle
+  // intro lifecycle — fades once textures are ready (or a hard timeout)
   useEffect(() => {
-    const t1 = setTimeout(() => setIntroFading(true), 4700);
-    const t2 = setTimeout(() => { setIntroGone(true); setHintShow(true); }, 6400);
-    const t3 = setTimeout(() => setHintShow(false), 16000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    const t1 = setTimeout(() => setMinTime(true), 4700);
+    const t2 = setTimeout(() => setForceIntro(true), 16000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
+
+  useEffect(() => {
+    if (!((ready && minTime) || forceIntro)) return;
+    setIntroFading(true);
+    const t1 = setTimeout(() => { setIntroGone(true); setHintShow(true); }, 1700);
+    const t2 = setTimeout(() => setHintShow(false), 11000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [ready, minTime, forceIntro]);
 
   // keyboard
   useEffect(() => {
@@ -210,6 +223,7 @@ export default function App() {
           <input type="range" min={0} max={1} step={0.01} value={p.starfield}
             onChange={e => eng()?.setParam('starfield', Number(e.target.value))} />
         </div>
+        <div className="p-attrib">{t.attrib}</div>
       </div>
 
       {dossier && dossierOpen && (
@@ -248,6 +262,7 @@ export default function App() {
             <div className="intro-tag">{t.introTag}</div>
             <div className="intro-title">HELION</div>
             <div className="intro-quote">{t.introQuote}</div>
+            {!ready && <div className="intro-load">{t.loading} {loadPct}%</div>}
           </div>
         </div>
       )}

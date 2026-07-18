@@ -6,7 +6,8 @@ import {
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
 } from './data';
 import type { PlanetSpec } from './data';
-import { planetTexture, sunTexture, ringTexture, glowSprite } from './textures';
+import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
+import type { TextureSet } from './textures';
 import { Ambience } from './audio';
 import { STR } from './i18n';
 import type { Lang } from './i18n';
@@ -61,6 +62,17 @@ interface Tween {
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
+// atmosphere rim settings per planet
+const ATMO: Record<string, { color: number; k: number; scale: number }> = {
+  earth:   { color: 0x6fb7ff, k: 0.62, scale: 1.16 },
+  venus:   { color: 0xe8d9a0, k: 0.66, scale: 1.14 },
+  mars:    { color: 0xe08a5f, k: 0.72, scale: 1.12 },
+  jupiter: { color: 0xd8b28c, k: 0.74, scale: 1.10 },
+  saturn:  { color: 0xe3cf9e, k: 0.74, scale: 1.10 },
+  uranus:  { color: 0x9fdfe3, k: 0.70, scale: 1.12 },
+  neptune: { color: 0x5f83e8, k: 0.70, scale: 1.12 },
+};
+
 export class SolarEngine {
   private renderer!: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -80,6 +92,14 @@ export class SolarEngine {
   private ephemOn = false;
   private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[] };
   private voyagers: { node: PlanetNode; v: VoyagerSpec; lastAu: number }[] = [];
+  private tex: TextureSet = {};
+  private earthClouds?: THREE.Mesh;
+  private sunGlow1?: THREE.Sprite;
+  private sunGlow2?: THREE.Sprite;
+  private pulseT = 0;
+
+  onProgress: ((pct: number) => void) | null = null;
+  onReady: (() => void) | null = null;
 
   private raf = 0;
   private disposed = false;
@@ -143,11 +163,18 @@ export class SolarEngine {
       if (this.cine) this.setCine(false);
     });
 
-    this.buildScene();
-    this.bindPointer();
-    window.addEventListener('resize', this.onResize);
-    this.loop();
-    this.emitSnapshot();
+    // load real maps first; procedural painters fill any gaps
+    loadRealTextures('textures/', p => this.onProgress?.(p))
+      .then(t => { this.tex = t; })
+      .catch(() => { /* fall back to procedural */ })
+      .finally(() => {
+        this.buildScene();
+        this.bindPointer();
+        window.addEventListener('resize', this.onResize);
+        this.loop();
+        this.emitSnapshot();
+        this.onReady?.();
+      });
   }
 
   private buildScene() {
@@ -156,13 +183,23 @@ export class SolarEngine {
     this.scene.add(sunLight);
     this.scene.add(new THREE.AmbientLight(0x2a3c52, 0.95));
 
+    // milky way backdrop
+    if (this.tex.milkyway) {
+      const sky = new THREE.Mesh(
+        new THREE.SphereGeometry(1400, 48, 32),
+        new THREE.MeshBasicMaterial({ map: this.tex.milkyway, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 0.9 }),
+      );
+      sky.renderOrder = -10;
+      this.scene.add(sky);
+    }
+
     // starfield
     this.stars = this.makeStars(3600, 700);
     this.scene.add(this.stars);
 
     // sun
     const sunGeo = new THREE.SphereGeometry(SUN_RADIUS, 64, 48);
-    const sunMat = new THREE.MeshBasicMaterial({ map: sunTexture() });
+    const sunMat = new THREE.MeshBasicMaterial({ map: this.tex.sun ?? sunTexture() });
     this.sun = new THREE.Mesh(sunGeo, sunMat);
     this.scene.add(this.sun);
     const glow1 = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -171,12 +208,14 @@ export class SolarEngine {
     }));
     glow1.scale.setScalar(SUN_RADIUS * 4.2);
     this.scene.add(glow1);
+    this.sunGlow1 = glow1;
     const glow2 = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowSprite('rgba(255,190,90,0.9)', 'rgba(255,110,20,0.28)'),
       blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55,
     }));
     glow2.scale.setScalar(SUN_RADIUS * 8.5);
     this.scene.add(glow2);
+    this.sunGlow2 = glow2;
 
     // planets
     for (const spec of PLANETS) {
@@ -194,7 +233,7 @@ export class SolarEngine {
       const pivot = new THREE.Group();
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.27, 24, 18),
-        new THREE.MeshStandardMaterial({ map: planetTexture('mercury'), roughness: 1 }),
+        new THREE.MeshStandardMaterial({ map: this.tex.moon ?? planetTexture('mercury'), roughness: 1 }),
       );
       mesh.position.set(2.1, 0, 0);
       pivot.add(mesh);
@@ -339,6 +378,44 @@ export class SolarEngine {
     return new THREE.Points(geo, mat);
   }
 
+  // per-planet material — real maps when available, procedural fallback
+  private makePlanetMaterial(spec: PlanetSpec): THREE.Material {
+    const real = this.tex[spec.id] ?? null;
+    if (spec.id === 'earth' && this.tex.earth) {
+      return new THREE.MeshPhongMaterial({
+        map: this.tex.earth,
+        normalMap: this.tex.earthNormal ?? undefined,
+        specularMap: this.tex.earthSpecular ?? undefined,
+        specular: new THREE.Color(0x3a3a3a),
+        shininess: 16,
+        emissiveMap: this.tex.earthNight ?? undefined,
+        emissive: new THREE.Color(0xffffff),
+        emissiveIntensity: 0.85,
+      });
+    }
+    const rocky = spec.id === 'mercury' || spec.id === 'mars' || spec.id === 'pluto';
+    return new THREE.MeshStandardMaterial({
+      map: real ?? planetTexture(spec.tex),
+      roughness: 0.95, metalness: 0.02,
+      bumpMap: real && rocky ? real : undefined,
+      bumpScale: 0.25,
+    });
+  }
+
+  // Fresnel rim-glow shell
+  private makeAtmosphere(radius: number, color: number, k: number): THREE.Mesh {
+    return new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 48, 36),
+      new THREE.ShaderMaterial({
+        uniforms: { c: { value: new THREE.Color(color) }, kk: { value: k } },
+        vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform vec3 c; uniform float kk; varying vec3 vN; void main(){ float i = pow(kk - dot(vN, vec3(0.0, 0.0, 1.0)), 2.0); gl_FragColor = vec4(c, 1.0) * i; }',
+        side: THREE.BackSide, blending: THREE.AdditiveBlending,
+        transparent: true, depthWrite: false,
+      }),
+    );
+  }
+
   private makePlanet(spec: PlanetSpec): PlanetNode {
     const pivot = new THREE.Group();
     pivot.rotation.x = spec.inclination * DEG; // orbital inclination
@@ -348,15 +425,30 @@ export class SolarEngine {
     body.rotation.z = spec.tiltDeg * DEG;
     body.position.set(spec.distance, 0, 0);
 
-    const geo = new THREE.SphereGeometry(spec.radius, 48, 36);
-    const mat = new THREE.MeshStandardMaterial({
-      map: planetTexture(spec.tex), roughness: 0.95, metalness: 0.02,
-    });
+    const geo = new THREE.SphereGeometry(spec.radius, 64, 48);
+    const mat = this.makePlanetMaterial(spec);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.userData.planetId = spec.id;
     body.add(mesh);
     pivot.add(body);
     this.pickMeshes.push(mesh);
+
+    // earth cloud layer — rotates slightly faster than the surface
+    if (spec.id === 'earth' && this.tex.earthClouds) {
+      const clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(spec.radius * 1.018, 48, 36),
+        new THREE.MeshLambertMaterial({
+          alphaMap: this.tex.earthClouds, transparent: true,
+          depthWrite: false, opacity: 0.85,
+        }),
+      );
+      body.add(clouds);
+      this.earthClouds = clouds;
+    }
+
+    // atmosphere rim glow
+    const atmo = ATMO[spec.id];
+    if (atmo) body.add(this.makeAtmosphere(spec.radius * atmo.scale, atmo.color, atmo.k));
 
     // rings
     let ring: THREE.Mesh | undefined;
@@ -371,11 +463,14 @@ export class SolarEngine {
         const r = Math.sqrt(x * x + y * y);
         uv.setXY(i, (r - inner) / (outerR - inner), 0.5);
       }
+      const useReal = spec.id === 'saturn' && this.tex.saturnRing;
+      const ringMap = useReal ? this.tex.saturnRing! : ringTexture();
       const rMat = new THREE.MeshBasicMaterial({
-        map: ringTexture(), side: THREE.DoubleSide, transparent: true,
+        map: ringMap, side: THREE.DoubleSide, transparent: true,
         opacity: spec.ring.opacity, depthWrite: false,
       });
-      rMat.color.set(spec.ring.color);
+      if (useReal) rMat.alphaMap = ringMap; // luminance gaps → transparent
+      else rMat.color.set(spec.ring.color);
       ring = new THREE.Mesh(rGeo, rMat);
       ring.rotation.x = -Math.PI / 2;
       body.add(ring);
@@ -631,6 +726,12 @@ export class SolarEngine {
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
     if (this.moon) this.moon.pivot.rotation.y += simDt * (Math.PI * 2 / (0.074 * 24));
+    if (this.earthClouds) this.earthClouds.rotation.y += simDt * 1.25 * 0.9;
+
+    // solar corona breathing
+    this.pulseT += dt;
+    if (this.sunGlow1) this.sunGlow1.scale.setScalar(SUN_RADIUS * 4.2 * (1 + 0.03 * Math.sin(this.pulseT * 1.7)));
+    if (this.sunGlow2) this.sunGlow2.scale.setScalar(SUN_RADIUS * 8.5 * (1 + 0.05 * Math.sin(this.pulseT * 0.9 + 1.3)));
 
     // camera modes
     if (this.cine) this.updateCine(dt);

@@ -233,3 +233,52 @@ export function glowSprite(inner: string, outer: string, size = 256): THREE.Canv
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+// ------------------------------------------------------------- real maps
+// Downloaded equirectangular maps (see ATTRIBUTION). Procedural painters
+// above remain as fallback when a file fails to load.
+export const TEXTURE_ATTRIBUTION = 'PLANET MAPS: SOLAR SYSTEM SCOPE (CC BY 4.0) · NASA/JPL · THREE.JS EXAMPLES';
+
+const FILES: Record<string, string> = {
+  mercury: '2k_mercury.jpg',
+  venus: '2k_venus_surface.jpg',
+  earth: '2k_earth_daymap.jpg',
+  earthNight: 'earth_night.jpg',
+  earthClouds: '2k_earth_clouds.jpg',
+  earthNormal: 'earth_normal.jpg',
+  earthSpecular: 'earth_specular.jpg',
+  mars: '2k_mars.jpg',
+  moon: '2k_moon.jpg',
+  jupiter: 'jupiter.jpg',
+  saturn: '2k_saturn.jpg',
+  saturnRing: 'saturn_ring.jpg',
+  uranus: 'uranus.jpg',
+  neptune: 'neptune.jpg',
+  pluto: 'pluto.jpg',
+  sun: 'sun.jpg',
+  milkyway: 'milkyway.png',
+};
+
+// data maps (normal/specular) stay in linear space
+const LINEAR = new Set(['earthNormal', 'earthSpecular', 'earthClouds']);
+
+export type TextureSet = Record<string, THREE.Texture | null>;
+
+export function loadRealTextures(base: string, onProgress: (pct: number) => void): Promise<TextureSet> {
+  const keys = Object.keys(FILES);
+  const out: TextureSet = {};
+  let done = 0;
+  const tick = () => { done++; onProgress(done / keys.length); };
+  return Promise.all(keys.map(k => new Promise<void>((resolve) => {
+    new THREE.TextureLoader().load(
+      base + FILES[k],
+      (t) => {
+        if (!LINEAR.has(k)) t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 8;
+        out[k] = t; tick(); resolve();
+      },
+      undefined,
+      () => { out[k] = null; tick(); resolve(); },
+    );
+  }))).then(() => out);
+}
