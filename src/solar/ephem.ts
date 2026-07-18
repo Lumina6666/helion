@@ -61,7 +61,7 @@ export const HALLEY = {
   inc: 162 * DEG,
   periodDays: 75.3 * 365.25,
   // mean anomaly at BASE_JD chosen so Halley is mid-outbound in 2026
-  M0: 2.4,
+  M0: 3.36,
 };
 
 export function halleyScenePos(simDays: number): { x: number; y: number; z: number } {

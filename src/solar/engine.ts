@@ -90,8 +90,8 @@ export class SolarEngine {
   private moon?: { pivot: THREE.Group; mesh: THREE.Mesh };
   private earthNode?: PlanetNode;
   private ephemOn = false;
-  private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[] };
-  private voyagers: { node: PlanetNode; v: VoyagerSpec; lastAu: number }[] = [];
+  private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[]; tailMat: THREE.ShaderMaterial; coma: THREE.Sprite };
+  private voyagers: { node: PlanetNode; v: VoyagerSpec; lastAu: number; craft: THREE.Group }[] = [];
   private tex: TextureSet = {};
   private earthClouds?: THREE.Mesh;
   private sunGlow1?: THREE.Sprite;
@@ -281,14 +281,63 @@ export class SolarEngine {
     coma.scale.setScalar(2.2);
     body.add(coma);
 
-    // tail: particle fan pointing anti-sun, updated per frame
-    const NT = 90;
+    // tail: shader-driven soft particles (dust fan + bluer ion streamer)
+    const NT = 700;
     const tGeo = new THREE.BufferGeometry();
     tGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NT * 3), 3));
-    const tail = new THREE.Points(tGeo, new THREE.PointsMaterial({
-      color: 0xbfe4ff, size: 0.34, transparent: true, opacity: 0.8,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    const aT = new Float32Array(NT);
+    const aSeed = new Float32Array(NT);
+    const aJit = new Float32Array(NT * 2);
+    const aIon = new Float32Array(NT);
+    for (let i = 0; i < NT; i++) {
+      aT[i] = Math.pow(Math.random(), 0.8);
+      aSeed[i] = Math.random();
+      aJit[i * 2] = Math.random() - 0.5;
+      aJit[i * 2 + 1] = Math.random() - 0.5;
+      aIon[i] = i % 10 < 3 ? 1 : 0; // 30 % ion tail
+    }
+    tGeo.setAttribute('aT', new THREE.BufferAttribute(aT, 1));
+    tGeo.setAttribute('aSeed', new THREE.BufferAttribute(aSeed, 1));
+    tGeo.setAttribute('aJit', new THREE.BufferAttribute(aJit, 2));
+    tGeo.setAttribute('aIon', new THREE.BufferAttribute(aIon, 1));
+    const tailMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uDust: { value: new THREE.Color(0xd8ecff) },
+        uIon: { value: new THREE.Color(0x5fa8ff) },
+        uOpacity: { value: 0.6 },
+      },
+      vertexShader: `
+        attribute float aT;
+        attribute float aSeed;
+        attribute float aIon;
+        varying float vT;
+        varying float vIon;
+        varying float vSeed;
+        void main() {
+          vT = aT; vIon = aIon; vSeed = aSeed;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          float size = mix(1.6, 5.0, aT) * (0.7 + 0.6 * aSeed);
+          gl_PointSize = clamp(size * (170.0 / -mv.z), 1.0, 40.0);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform vec3 uDust;
+        uniform vec3 uIon;
+        uniform float uOpacity;
+        varying float vT;
+        varying float vIon;
+        varying float vSeed;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5));
+          float a = smoothstep(0.5, 0.04, d);
+          a *= (1.0 - vT) * (0.55 + 0.45 * vSeed) * uOpacity;
+          vec3 col = mix(uDust, uIon, vIon);
+          gl_FragColor = vec4(col, a);
+        }`,
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
+    });
+    const tail = new THREE.Points(tGeo, tailMat);
+    tail.frustumCulled = false;
     this.scene.add(tail);
 
     // trail of recent positions
@@ -304,7 +353,57 @@ export class SolarEngine {
       label: this.makeLabel(spec),
     };
     this.planets.push(node);
-    this.halley = { node, tail, trail, trailPts: [] };
+    this.halley = { node, tail, trail, trailPts: [], tailMat, coma };
+  }
+
+  // recognizable Voyager silhouette: parabolic high-gain dish, golden bus,
+  // RTG power rod, magnetometer boom. Dish (+Z) is aimed at the Sun/Earth.
+  private buildVoyagerCraft(): THREE.Group {
+    const g = new THREE.Group();
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.35, metalness: 0.85, emissive: 0x2a1e05 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xc9c6bd, roughness: 0.75, metalness: 0.1, side: THREE.DoubleSide });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x555c66, roughness: 0.6, metalness: 0.6 });
+
+    // decagonal bus
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.34, 10), gold));
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.06, 10), gold);
+    cap.position.y = -0.2;
+    g.add(cap);
+
+    // high-gain dish (paraboloid opening toward +Z)
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 14; i++) {
+      const r = (i / 14) * 0.5;
+      pts.push(new THREE.Vector2(r, 0.06 + 0.45 * r * r));
+    }
+    const dish = new THREE.Mesh(new THREE.LatheGeometry(pts, 28), white);
+    dish.rotation.x = Math.PI / 2;
+    dish.position.set(0, 0, 0.22);
+    g.add(dish);
+    const feed = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 10), dark);
+    feed.rotation.x = -Math.PI / 2;
+    feed.position.set(0, 0, 0.46);
+    g.add(feed);
+
+    // RTG boom + generator
+    const boom1 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), dark);
+    boom1.rotation.z = Math.PI / 2;
+    boom1.position.set(-0.55, 0.12, -0.12);
+    g.add(boom1);
+    const rtg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.09, 0.32, 10),
+      new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.5, metalness: 0.4 }),
+    );
+    rtg.rotation.z = Math.PI / 2;
+    rtg.position.set(-1.18, 0.12, -0.12);
+    g.add(rtg);
+
+    // magnetometer boom — long thin rod angled aft
+    const boom2 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.7, 6), dark);
+    boom2.rotation.set(0.5, 0, 2.2);
+    boom2.position.set(0.5, -0.6, -0.22);
+    g.add(boom2);
+    return g;
   }
 
   private buildVoyager(v: VoyagerSpec) {
@@ -314,9 +413,13 @@ export class SolarEngine {
     const body = new THREE.Group();
     pivot.add(body);
 
+    const craft = this.buildVoyagerCraft();
+    body.add(craft);
+
+    // placeholder for the shared spin / raycast plumbing
     const mesh = new THREE.Mesh(
-      new THREE.OctahedronGeometry(spec.radius, 1),
-      new THREE.MeshStandardMaterial({ color: 0xffd28a, roughness: 0.35, metalness: 0.8, emissive: 0x664411 }),
+      new THREE.SphereGeometry(0.01, 4, 4),
+      new THREE.MeshBasicMaterial({ visible: false }),
     );
     body.add(mesh);
 
@@ -331,9 +434,9 @@ export class SolarEngine {
 
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowSprite('rgba(255,210,140,0.9)', 'rgba(255,180,90,0.25)'),
-      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.45,
     }));
-    glow.scale.setScalar(1.8);
+    glow.scale.setScalar(1.1);
     body.add(glow);
 
     const node: PlanetNode = {
@@ -342,7 +445,7 @@ export class SolarEngine {
       label: this.makeLabel(spec),
     };
     this.planets.push(node);
-    this.voyagers.push({ node, v, lastAu: -1 });
+    this.voyagers.push({ node, v, lastAu: -1, craft });
   }
 
   private makeStars(count: number, radius: number): THREE.Points {
@@ -706,6 +809,7 @@ export class SolarEngine {
         if (rec) {
           const pos = voyagerScenePos(rec.v, this.simDays);
           p.body.position.set(pos.x, pos.y, pos.z);
+          rec.craft.lookAt(0, 0, 0); // high-gain dish tracks Earth/Sun
           const au = voyagerAU(rec.v, this.simDays);
           if (Math.abs(au - rec.lastAu) >= 0.05 && p.label) {
             rec.lastAu = au;
@@ -771,28 +875,42 @@ export class SolarEngine {
     this.renderer.render(this.scene, this.camera);
   };
 
-  // comet tail — particle fan streaming away from the Sun
+  // comet tail — soft shader particles streaming away from the Sun
   private updateCometTail(nucleus: THREE.Vector3) {
     if (!this.halley) return;
-    const attr = this.halley.tail.geometry.attributes.position as THREE.BufferAttribute;
+    const geo = this.halley.tail.geometry;
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const aT = geo.attributes.aT as THREE.BufferAttribute;
+    const aSeed = geo.attributes.aSeed as THREE.BufferAttribute;
+    const aJit = geo.attributes.aJit as THREE.BufferAttribute;
+    const aIon = geo.attributes.aIon as THREE.BufferAttribute;
     const r = nucleus.length();
     const L = THREE.MathUtils.clamp(620 / (r * r), 1.2, 13);
     const dir = nucleus.clone().normalize();
-    const perp = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+    const perp = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0));
+    if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0);
+    perp.normalize();
     const perp2 = new THREE.Vector3().crossVectors(dir, perp).normalize();
-    const n = attr.count;
+    const time = this.pulseT;
+    const n = pos.count;
     for (let i = 0; i < n; i++) {
-      const t = (i + 1) / n;
-      const spread = t * L * 0.22;
-      const j1 = (Math.random() - 0.5) * spread;
-      const j2 = (Math.random() - 0.5) * spread;
-      attr.setXYZ(i,
-        nucleus.x + dir.x * L * t + perp.x * j1 + perp2.x * j2,
-        nucleus.y + dir.y * L * t + perp.y * j1 + perp2.y * j2,
-        nucleus.z + dir.z * L * t + perp.z * j1 + perp2.z * j2);
+      const t = aT.getX(i);
+      const seed = aSeed.getX(i);
+      const ion = aIon.getX(i);
+      const Li = ion > 0.5 ? L * 1.6 : L;
+      const spreadBase = ion > 0.5 ? 0.05 : 0.24;
+      const spread = t * Li * spreadBase * (0.5 + 0.9 * seed);
+      const wob = Math.sin(time * 2.4 + seed * 43.0) * 0.1 * t * Li;
+      const j1 = aJit.getX(i) * spread * 2 + wob;
+      const j2 = aJit.getY(i) * spread * 2;
+      pos.setXYZ(i,
+        nucleus.x + dir.x * Li * t + perp.x * j1 + perp2.x * j2,
+        nucleus.y + dir.y * Li * t + perp.y * j1 + perp2.y * j2,
+        nucleus.z + dir.z * Li * t + perp.z * j1 + perp2.z * j2);
     }
-    attr.needsUpdate = true;
-    (this.halley.tail.material as THREE.PointsMaterial).opacity = THREE.MathUtils.clamp(26 / (r * r) + 0.15, 0.15, 0.85);
+    pos.needsUpdate = true;
+    this.halley.tailMat.uniforms.uOpacity.value = THREE.MathUtils.clamp(26 / (r * r) + 0.18, 0.18, 0.9);
+    this.halley.coma.scale.setScalar(2.2 * THREE.MathUtils.clamp(18 / r, 0.6, 2.4));
   }
 
   // comet trail — recent path through the system
