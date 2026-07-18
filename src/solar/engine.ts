@@ -85,7 +85,7 @@ export class SolarEngine {
   private pickMeshes: THREE.Object3D[] = [];
   private orbitLines: THREE.LineLoop[] = [];
   private stars!: THREE.Points;
-  private belt!: THREE.Points;
+  private belt!: THREE.Group;
   private sun!: THREE.Mesh;
   private moon?: { pivot: THREE.Group; mesh: THREE.Mesh };
   private earthNode?: PlanetNode;
@@ -340,11 +340,14 @@ export class SolarEngine {
     tail.frustumCulled = false;
     this.scene.add(tail);
 
-    // trail of recent positions
+    // trail of recent positions — fixed-capacity buffer + drawRange (no realloc)
     const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(220 * 3), 3));
+    trailGeo.setDrawRange(0, 0);
     const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
       color: 0x7fc4ff, transparent: true, opacity: 0.3,
     }));
+    trail.frustumCulled = false;
     this.scene.add(trail);
 
     const node: PlanetNode = {
@@ -546,18 +549,64 @@ export class SolarEngine {
     return new THREE.Points(geo, mat);
   }
 
-  private makeBelt(count: number, inner: number, outer: number): THREE.Points {
-    const pos = new Float32Array(count * 3);
+  // asteroid belt: real 3D rocks (instanced, noise-deformed icosahedra)
+  // plus a faint dust layer of soft round sprites.
+  private makeBelt(count: number, inner: number, outer: number): THREE.Group {
+    const group = new THREE.Group();
+
+    // ---- rock geometry with welded, deterministically jittered vertices
+    const rockGeo = new THREE.IcosahedronGeometry(1, 1);
+    const rp = rockGeo.attributes.position as THREE.BufferAttribute;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < rp.count; i++) {
+      v.fromBufferAttribute(rp, i);
+      const h = Math.sin(v.x * 12.9898 + v.y * 78.233 + v.z * 37.719) * 43758.5453;
+      const n = 0.72 + (h - Math.floor(h)) * 0.56; // 0.72–1.28
+      rp.setXYZ(i, v.x * n, v.y * (0.62 + (h - Math.floor(h)) * 0.5), v.z * n);
+    }
+    rockGeo.computeVertexNormals();
+
+    const rockMat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0.04 });
+    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, count);
+    rocks.frustumCulled = false;
+    const dummy = new THREE.Object3D();
+    const col = new THREE.Color();
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = inner + Math.pow(Math.random(), 0.7) * (outer - inner);
-      const y = (Math.random() - 0.5) * 1.6;
-      pos.set([Math.cos(a) * r, y, Math.sin(a) * r], i * 3);
+      const y = (Math.random() - 0.5) * 1.7;
+      dummy.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      const s = 0.05 + Math.pow(Math.random(), 2.6) * 0.34; // many small, few large
+      dummy.scale.set(s * (0.75 + Math.random() * 0.5), s, s * (0.75 + Math.random() * 0.5));
+      dummy.updateMatrix();
+      rocks.setMatrixAt(i, dummy.matrix);
+      col.setHSL(0.07 + Math.random() * 0.05, 0.08 + Math.random() * 0.16, 0.16 + Math.random() * 0.26);
+      rocks.setColorAt(i, col);
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({ color: 0xbbaa90, size: 0.22, transparent: true, opacity: 0.75, sizeAttenuation: true });
-    return new THREE.Points(geo, mat);
+    rocks.instanceMatrix.needsUpdate = true;
+    if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true;
+    group.add(rocks);
+
+    // ---- soft dust haze (round sprites, not square points)
+    const dustN = 1400;
+    const dustPos = new Float32Array(dustN * 3);
+    for (let i = 0; i < dustN; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = inner - 1 + Math.pow(Math.random(), 0.8) * (outer - inner + 2);
+      dustPos.set([Math.cos(a) * r, (Math.random() - 0.5) * 1.2, Math.sin(a) * r], i * 3);
+    }
+    const dustGeo = new THREE.BufferGeometry();
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+      map: glowSprite('rgba(190,170,140,0.55)', 'rgba(150,130,105,0.18)', 64),
+      color: 0xbbaa90, size: 0.55, transparent: true, opacity: 0.4,
+      sizeAttenuation: true, depthWrite: false,
+    }));
+    dust.frustumCulled = false;
+    group.add(dust);
+
+    return group;
   }
 
   // per-planet material — real maps when available, procedural fallback
@@ -576,12 +625,12 @@ export class SolarEngine {
       });
     }
     const rocky = spec.id === 'mercury' || spec.id === 'mars' || spec.id === 'pluto';
-    return new THREE.MeshStandardMaterial({
+    const mat = new THREE.MeshStandardMaterial({
       map: real ?? planetTexture(spec.tex),
       roughness: 0.95, metalness: 0.02,
-      bumpMap: real && rocky ? real : undefined,
-      bumpScale: 0.25,
     });
+    if (real && rocky) { mat.bumpMap = real; mat.bumpScale = 0.25; }
+    return mat;
   }
 
   // Fresnel rim-glow shell
@@ -1001,7 +1050,10 @@ export class SolarEngine {
     if (!last || last.distanceToSquared(cur) > 0.02) {
       pts.push(cur.clone());
       if (pts.length > 220) pts.shift();
-      this.halley.trail.geometry.setFromPoints(pts);
+      const attr = this.halley.trail.geometry.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < pts.length; i++) attr.setXYZ(i, pts[i].x, pts[i].y, pts[i].z);
+      attr.needsUpdate = true;
+      this.halley.trail.geometry.setDrawRange(0, pts.length);
     }
   }
 
