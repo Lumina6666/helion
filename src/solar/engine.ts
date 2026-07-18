@@ -283,7 +283,7 @@ export class SolarEngine {
     }
 
     // asteroid belt between Mars (30) and Jupiter (43)
-    this.belt = this.makeBelt(2400, 33.5, 40.5);
+    this.belt = this.makeBelt(2400, 33.8, 39.0);
     this.scene.add(this.belt);
 
     // moon
@@ -651,7 +651,7 @@ export class SolarEngine {
     const dustPos = new Float32Array(dustN * 3);
     for (let i = 0; i < dustN; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = inner - 1 + Math.pow(Math.random(), 0.8) * (outer - inner + 2);
+      const r = inner - 0.6 + Math.pow(Math.random(), 0.8) * (outer - inner + 1.0);
       dustPos.set([Math.cos(a) * r, (Math.random() - 0.5) * 1.2, Math.sin(a) * r], i * 3);
     }
     const dustGeo = new THREE.BufferGeometry();
@@ -1639,6 +1639,19 @@ export class SolarEngine {
     this.updateProbe();
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
+    // keep the belt clear of the planets at any planetScale: shrink the whole
+    // ring inward if Jupiter's *visual* radius would otherwise reach it
+    {
+      const jup = this.planets.find(p => p.spec.id === 'jupiter');
+      const mars = this.planets.find(p => p.spec.id === 'mars');
+      if (jup && mars) {
+        const jupEdge = jup.spec.distance - jup.spec.radius * this.params.planetScale - 0.9;
+        const marsEdge = mars.spec.distance + mars.spec.radius * this.params.planetScale + 0.9;
+        const sOuter = jupEdge / 39.0;   // belt rocks live at 33.8–39.0
+        const s = THREE.MathUtils.clamp(Math.min(1, sOuter), marsEdge / 33.8, 1);
+        this.belt.scale.setScalar(s);
+      }
+    }
     if (this.moon) this.moon.pivot.rotation.y += simDt * (Math.PI * 2 / (0.074 * 24));
     if (this.earthClouds) this.earthClouds.rotation.y += simDt * 1.25 * 0.9;
 
