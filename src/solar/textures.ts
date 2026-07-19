@@ -196,6 +196,8 @@ export function planetTexture(kind: TexKind): THREE.CanvasTexture {
     case 'uranus':  c = paintGasGiant([[168, 218, 224], [148, 204, 214], [188, 230, 234]], 21.9, 0.35); break;
     case 'neptune': c = paintGasGiant([[64, 96, 200], [48, 76, 176], [92, 128, 224], [56, 88, 190]], 27.4, 0.7, { x: 0.4, y: 0.42, r: 0.05, col: [30, 48, 130] }); break;
     case 'pluto':   c = paintRocky([[196, 178, 158], [150, 128, 110], [222, 206, 188]], 31.6, 24); break;
+    case 'ceres':   c = paintRocky([[142, 132, 118], [104, 96, 88], [170, 160, 146]], 47.3, 60); break;
+    case 'vesta':   c = paintRocky([[168, 150, 132], [128, 110, 96], [196, 178, 158]], 91.7, 45); break;
   }
   return toTexture(c);
 }

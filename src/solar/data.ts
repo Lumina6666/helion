@@ -20,7 +20,8 @@ export interface PlanetSpec {
 
 export type TexKind =
   | 'mercury' | 'venus' | 'earth' | 'mars'
-  | 'jupiter' | 'saturn' | 'uranus' | 'neptune' | 'pluto';
+  | 'jupiter' | 'saturn' | 'uranus' | 'neptune' | 'pluto'
+  | 'ceres' | 'vesta';
 
 export const SUN_RADIUS = 5;
 export const AU_UNITS = 24;          // units per AU
@@ -175,6 +176,38 @@ export const MOON_SPEC: PlanetSpec = {
   fact: 'TIDALLY LOCKED · ORBITS EARTH EVERY 27.3 DAYS',
   factCn: '潮汐锁定 · 每 27.3 天绕地球一圈',
 };
+// ------------------------------------------------------------ belt asteroids
+// Ceres & Vesta — real JPL-approximate elements live in ephem.ts (ELEMENTS);
+// distances here are the compressed display radii (auToSceneRadius of 2.77/2.36 AU).
+export const ASTEROID_SPECS: PlanetSpec[] = [
+  {
+    id: 'ceres', name: 'CERES', cn: '谷神星',
+    radius: 0.14, distance: 35.7, inclination: 0, tiltDeg: 4, spin: 1.6,
+    tex: 'ceres', color: '#b9b2a6',
+    fact: 'DWARF PLANET · 2.77 AU · LARGEST BODY IN THE BELT',
+    factCn: '矮行星 · 2.77 AU · 小行星带中最大的天体',
+  },
+  {
+    id: 'vesta', name: 'VESTA', cn: '灶神星',
+    radius: 0.11, distance: 34.1, inclination: 0, tiltDeg: 27, spin: 2.2,
+    tex: 'vesta', color: '#c8b9a0',
+    fact: '2.36 AU · BRIGHTEST ASTEROID · VISIBLE TO NAKED EYE',
+    factCn: '2.36 AU · 最亮的小行星 · 肉眼可见',
+  },
+];
+
+// ------------------------------------------------------------ ISS (showcase)
+// Real-time display orbit — NOT synced to the simulation clock (92.9 min at
+// 1× would be a blur). Radius adapts to the visual Earth size at runtime.
+export const ISS_SPEC: PlanetSpec = {
+  id: 'iss', name: 'ISS', cn: '国际空间站',
+  radius: 0.07, distance: 1.7, inclination: 51.6, tiltDeg: 0, spin: 0,
+  tex: 'mercury', color: '#c0d8e8',
+  fact: '420 KM ALT · 51.6° INCLINATION · 92.9 MIN PER ORBIT',
+  factCn: '420 千米高度 · 倾角 51.6° · 每圈 92.9 分钟',
+};
+export const ISS_SCENE_R = 1.7;
+
 export const MOON_PERIOD_DAYS = 27.3217;
 export const MOON_SCENE_R = 2.1;
 export const NEW_MOON_JD = 2440587.5 + Date.UTC(2026, 6, 14, 17, 44) / 86400000;
@@ -183,7 +216,7 @@ export const NEW_MOON_JD = 2440587.5 + Date.UTC(2026, 6, 14, 17, 44) / 86400000;
 export const DIST_AU: Record<string, number> = {
   mercury: 0.387, venus: 0.723, earth: 1.0, mars: 1.524,
   jupiter: 5.203, saturn: 9.583, uranus: 19.19, neptune: 30.07,
-  pluto: 39.48, moon: 1.0, halley: 17.8,
+  pluto: 39.48, moon: 1.0, halley: 17.8, ceres: 2.767, vesta: 2.362,
 };
 
 // ------------------------------------------------------------ dossier data
@@ -196,6 +229,42 @@ export interface Dossier {
 }
 
 export const DOSSIER: Record<string, Dossier> = {
+  ceres: {
+    type: 'DWARF PLANET', typeCn: '矮行星', diameterKm: 940,
+    blurb: 'The largest body in the asteroid belt — a briny world with bright salt deposits in Occator crater.',
+    blurbCn: '小行星带中最大的天体——欧卡托陨石坑里的亮斑是盐类沉积。',
+    rows: [
+      { k: 'CLASS', kCn: '分类', v: 'DWARF PLANET', vCn: '矮行星' },
+      { k: 'SEMI-MAJOR AXIS', kCn: '半长轴', v: '2.77 AU', vCn: '2.77 AU' },
+      { k: 'YEAR', kCn: '公转周期', v: '4.60 YEARS', vCn: '4.60 年' },
+      { k: 'INCLINATION', kCn: '轨道倾角', v: '10.6°', vCn: '10.6°' },
+      { k: 'VISITOR', kCn: '探测器', v: 'DAWN (2015–2018)', vCn: '黎明号（2015–2018）' },
+    ],
+  },
+  vesta: {
+    type: 'ASTEROID', typeCn: '小行星', diameterKm: 525,
+    blurb: 'The brightest asteroid — a differentiated protoplanet with basaltic lava plains and a giant south-polar basin.',
+    blurbCn: '最亮的小行星——已分化的原行星，拥有玄武岩熔岩平原和巨大的南极盆地。',
+    rows: [
+      { k: 'CLASS', kCn: '分类', v: 'V-TYPE ASTEROID', vCn: 'V 型小行星' },
+      { k: 'SEMI-MAJOR AXIS', kCn: '半长轴', v: '2.36 AU', vCn: '2.36 AU' },
+      { k: 'YEAR', kCn: '公转周期', v: '3.63 YEARS', vCn: '3.63 年' },
+      { k: 'INCLINATION', kCn: '轨道倾角', v: '7.1°', vCn: '7.1°' },
+      { k: 'VISITOR', kCn: '探测器', v: 'DAWN (2011–2012)', vCn: '黎明号（2011–2012）' },
+    ],
+  },
+  iss: {
+    type: 'SPACE STATION', typeCn: '空间站', diameterKm: 0.109,
+    blurb: 'The largest human-made object in orbit — circling Earth every 92.9 minutes at 7.66 km/s. Display orbit runs in real time, not sim time.',
+    blurbCn: '人类在轨建造的最大物体——以 7.66 千米/秒每 92.9 分钟绕地球一圈。展示轨道按真实时间运行，与模拟时钟无关。',
+    rows: [
+      { k: 'ALTITUDE', kCn: '轨道高度', v: '~420 KM', vCn: '约 420 千米' },
+      { k: 'PERIOD', kCn: '绕地周期', v: '92.9 MIN', vCn: '92.9 分钟' },
+      { k: 'INCLINATION', kCn: '轨道倾角', v: '51.6°', vCn: '51.6°' },
+      { k: 'SPAN', kCn: '翼展', v: '109 M', vCn: '109 米' },
+      { k: 'CREW SINCE', kCn: '常驻始于', v: '2000-11', vCn: '2000 年 11 月' },
+    ],
+  },
   moon: {
     type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 3475,
     blurb: 'Tidally locked to Earth — the same face always looks at us. Its phases come from sunlight geometry, not shadows of Earth.',

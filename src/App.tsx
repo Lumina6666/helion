@@ -355,6 +355,10 @@ export default function App() {
           <input type="range" min={0} max={1} step={0.01} value={p.starfield}
             onChange={e => eng()?.setParam('starfield', Number(e.target.value))} />
         </div>
+        <div className="p-row">
+          <button className={`hbtn wide ${snap?.bloom ? 'active' : ''}`} id="btn-bloom"
+            onClick={() => eng()?.toggleBloom()}>{t.bloomLabel}{snap?.bloom ? ' · ON' : ' · OFF'}</button>
+        </div>
         <div className="p-attrib">{t.attrib}</div>
       </div>
 

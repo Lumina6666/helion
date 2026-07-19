@@ -30,6 +30,7 @@ export interface Strings {
   orbitLines: string;
   planetScale: string;
   starfield: string;
+  bloomLabel: string;
   introTag: string;
   introQuote: string;
   loading: string;
@@ -155,6 +156,9 @@ export interface Strings {
     expReset: string;
     expResetJump: string;
     expNoProbe: string;
+    bloomOn: string;
+    bloomOff: string;
+    bloomAutoOff: string;
     out_flyby: string;
     out_impact: string;
     out_captured: string;
@@ -196,6 +200,7 @@ export const STR: Record<Lang, Strings> = {
     orbitLines: 'ORBIT LINES',
     planetScale: 'PLANET SCALE',
     starfield: 'STARFIELD',
+    bloomLabel: '✦ BLOOM',
     introTag: 'REAL-TIME ORBITAL SIMULATION',
     introQuote: '“The cosmos is within us. We are made of star-stuff.” — Carl Sagan',
     loading: 'LOADING MAPS',
@@ -321,6 +326,9 @@ export const STR: Record<Lang, Strings> = {
       expReset: 'SOLAR SYSTEM RESET',
       expResetJump: 'TIME JUMP — EXPERIMENT RESET',
       expNoProbe: 'PROBE UNAVAILABLE DURING N-BODY EXPERIMENT',
+      bloomOn: 'BLOOM ON',
+      bloomOff: 'BLOOM OFF',
+      bloomAutoOff: 'LOW FPS — BLOOM AUTO-DISABLED',
       out_flyby: 'FLYBY SUCCESS — TARGET REACHED',
       out_impact: 'DIRECT HIT — IMPACT CONFIRMED',
       out_captured: 'ORBIT CAPTURE ACHIEVED',
@@ -360,6 +368,7 @@ export const STR: Record<Lang, Strings> = {
     orbitLines: '轨道线',
     planetScale: '行星缩放',
     starfield: '星空密度',
+    bloomLabel: '✦ 泛光',
     introTag: '实时轨道模拟',
     introQuote: '“宇宙就在我们之中，我们由星尘构成。” — 卡尔·萨根',
     loading: '加载贴图',
@@ -485,6 +494,9 @@ export const STR: Record<Lang, Strings> = {
       expReset: '太阳系已重置',
       expResetJump: '时间跳跃 — 实验已重置',
       expNoProbe: 'N 体实验运行中，探测器模式不可用',
+      bloomOn: '泛光已开启',
+      bloomOff: '泛光已关闭',
+      bloomAutoOff: '帧率过低 — 泛光已自动关闭',
       out_flyby: '飞掠成功 — 已抵达目标',
       out_impact: '直接命中 — 撞击确认',
       out_captured: '环绕捕获成功',

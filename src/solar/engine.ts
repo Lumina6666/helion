@@ -1,10 +1,15 @@
 // HELION engine — Three.js solar system simulation.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
+  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R,
 } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
@@ -33,6 +38,7 @@ export interface HudSnapshot {
   well: boolean;
   lagrange: boolean;
   experiment: boolean;
+  bloom: boolean;
   shotName: string;
   focusId: string;
   focusName: string;
@@ -182,6 +188,11 @@ export class SolarEngine {
     trailCount: number;
     lastTrailPos: THREE.Vector3;
   } | null = null;
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private bloomOn = false;
+  private bloomAuto = true;   // auto quality-degrade armed
+  private fpsLowT = 0;
   private surface: {
     node: PlanetNode;
     savedCam: THREE.Vector3;
@@ -255,6 +266,16 @@ export class SolarEngine {
     this.camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 3000);
     this.camera.position.set(-52, 62, 88);
 
+    // post-processing: bloom on capable devices; auto-degrades if fps drops
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    this.bloomOn = !coarse && window.innerWidth >= 768;
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight), 0.5, 0.65, 0.82);
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
+
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
@@ -322,8 +343,8 @@ export class SolarEngine {
     this.scene.add(glow2);
     this.sunGlow2 = glow2;
 
-    // planets
-    for (const spec of PLANETS) {
+    // planets (+ belt asteroids Ceres & Vesta)
+    for (const spec of [...PLANETS, ...ASTEROID_SPECS]) {
       const node = this.makePlanet(spec);
       this.planets.push(node);
       if (spec.id === 'earth') this.earthNode = node;
@@ -336,6 +357,7 @@ export class SolarEngine {
 
     // the Moon — real period & inclination, phases anchored to a true new moon
     this.buildMoon();
+    this.buildIss();
 
     // Halley's comet — stylized elliptical orbit, particle tail, fading trail
     this.buildHalley();
@@ -379,6 +401,55 @@ export class SolarEngine {
     const node: PlanetNode = { spec, pivot, mesh, body, angle: 0, period: 0, label, orbitRing: ring };
     this.planets.push(node);
     this.moonNode = node;
+  }
+
+  // ISS — showcase orbit around Earth (real-time, not sim-clock driven)
+  private buildIss() {
+    const spec = ISS_SPEC;
+    const pivot = new THREE.Group();
+    this.scene.add(pivot);
+    const body = new THREE.Group();
+    pivot.add(body);
+
+    // station model: truss + habitation modules + twin solar wings
+    const station = new THREE.Group();
+    const alu = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.45, metalness: 0.8 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.4, metalness: 0.85, emissive: 0x201604 });
+    const panelBlue = new THREE.MeshStandardMaterial({ color: 0x22477e, roughness: 0.35, metalness: 0.5, emissive: 0x0a1830, emissiveIntensity: 0.7 });
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.018, 0.018), alu);
+    station.add(truss);
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.11, 10), alu);
+    core.rotation.z = Math.PI / 2;
+    core.userData.planetId = spec.id;
+    station.add(core);
+    const mod2 = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.07, 10), gold);
+    mod2.rotation.z = Math.PI / 2;
+    mod2.position.set(0.07, 0.02, 0.02);
+    station.add(mod2);
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.004, 0.07), panelBlue);
+      wing.position.set(sx * 0.28, 0, 0);
+      station.add(wing);
+    }
+    body.add(station);
+    this.pickMeshes.push(core); // click target
+
+    // orbit ring (local, inclined 51.6°) — radius is updated live (planetScale-safe)
+    const ringPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(Math.cos(t), 0, Math.sin(t)));
+    }
+    const ring = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(ringPts),
+      new THREE.LineBasicMaterial({ color: 0x9ab8cc, transparent: true, opacity: 0.4 }),
+    );
+    ring.rotation.x = spec.inclination * DEG;
+    pivot.add(ring);
+
+    const label = this.makeLabel(spec);
+    const node: PlanetNode = { spec, pivot, mesh: core, body, angle: 0, period: 0, label, orbitRing: ring };
+    this.planets.push(node);
   }
 
   private makeLabel(spec: PlanetSpec): HTMLElement {
@@ -906,9 +977,21 @@ export class SolarEngine {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.composer?.setSize(window.innerWidth, window.innerHeight);
   };
 
   // ------------------------------------------------------------- public API
+  setBloom(on: boolean, manual = false) {
+    this.bloomOn = on;
+    if (manual) this.bloomAuto = true; // user re-enabled → re-arm auto-degrade
+    this.emitSnapshot();
+  }
+
+  toggleBloom() {
+    this.setBloom(!this.bloomOn, true);
+    this.toast(this.bloomOn ? STR[this.lang].toast.bloomOn : STR[this.lang].toast.bloomOff);
+  }
+
   setLang(lang: Lang) {
     this.lang = lang;
     for (const p of this.planets) {
@@ -2106,6 +2189,7 @@ export class SolarEngine {
       well: this.well !== null,
       lagrange: this.lagrangeGroup !== null,
       experiment: this.experiment !== null,
+      bloom: this.bloomOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
       focusId: this.focus?.spec.id ?? 'sun',
       focusName: this.focus ? this.planetName(this.focus) : STR[this.lang].sun,
@@ -2168,6 +2252,23 @@ export class SolarEngine {
             Math.sin(A) * Math.cos(I) * MOON_SCENE_R,
           );
           p.mesh.rotation.y = -A; // tidally locked
+        }
+      } else if (p.spec.id === 'iss') {
+        const earth = this.planets.find(pl => pl.spec.id === 'earth');
+        if (earth) {
+          const epos = earth.body.position;
+          p.pivot.position.copy(epos);
+          p.pivot.rotation.y = -Math.atan2(epos.z, epos.x);
+          // keep clear of the (possibly upscaled) Earth, then showcase-orbit
+          const R = Math.max(ISS_SCENE_R, earth.spec.radius * this.params.planetScale + 0.55);
+          const A = this.pulseT * ((Math.PI * 2) / 16); // ~16 s per revolution, real time
+          const I = p.spec.inclination * DEG;
+          p.body.position.set(
+            Math.cos(A) * R,
+            Math.sin(A) * Math.sin(I) * R,
+            Math.sin(A) * Math.cos(I) * R,
+          );
+          if (p.orbitRing) p.orbitRing.scale.setScalar(R);
         }
       } else if (p.spec.id === 'halley') {
         const pos = halleyScenePos(this.simDays);
@@ -2245,6 +2346,16 @@ export class SolarEngine {
     if (this.fpsTimer >= 0.5) {
       this.fps = Math.round(this.fpsN / this.fpsAcc);
       this.fpsAcc = 0; this.fpsN = 0; this.fpsTimer = 0;
+      this.ambience.setFlow(Math.abs(this.speed * DAYS_PER_SECOND));
+      // bloom auto-degrade: sustained low fps → disable + notify once
+      if (this.bloomOn && this.bloomAuto && this.fps > 0 && this.fps < 26) {
+        this.fpsLowT += 0.5;
+        if (this.fpsLowT >= 3) {
+          this.bloomAuto = false;
+          this.setBloom(false);
+          this.toast(STR[this.lang].toast.bloomAutoOff);
+        }
+      } else this.fpsLowT = 0;
     }
     if (this.telTimer >= 0.2) {
       this.telTimer = 0;
@@ -2260,7 +2371,8 @@ export class SolarEngine {
       });
     }
 
-    this.renderer.render(this.scene, this.camera);
+    if (this.bloomOn && this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   };
 
   // comet tail — soft shader particles streaming away from the Sun

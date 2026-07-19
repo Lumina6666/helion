@@ -4,8 +4,16 @@ export class Ambience {
   private master: GainNode | null = null;
   private nodes: AudioNode[] = [];
   private running = false;
+  private filter: BiquadFilterNode | null = null;
 
   get isOn() { return this.running; }
+
+  // brightness follows the time-flow rate — faster clock → more open filter
+  setFlow(daysPerSec: number) {
+    if (!this.running || !this.ctx || !this.filter) return;
+    const f = Math.min(900, Math.max(180, 180 + Math.log10(1 + daysPerSec) * 110));
+    this.filter.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.5);
+  }
 
   toggle(): boolean {
     if (this.running) { this.stop(); return false; }
@@ -28,6 +36,7 @@ export class Ambience {
       filter.frequency.value = 240;
       filter.Q.value = 2.2;
       filter.connect(master);
+      this.filter = filter;
 
       const mk = (type: OscillatorType, freq: number, gain: number) => {
         const o = ctx.createOscillator();

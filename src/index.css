@@ -632,7 +632,11 @@ body { position: fixed; inset: 0; }
 }
 
 @media (max-width: 900px) {
-  #eventlog { left: 12px; bottom: 80px; width: min(340px, calc(100vw - 24px)); }
+  #eventlog { left: 12px; bottom: 80px; width: min(340px, calc(100vw - 24px)); max-height: 38vh; }
+  #probepanel { left: 12px; right: 12px; width: auto; max-height: 44vh; overflow-y: auto; }
+  #timepanel { left: 12px; right: 12px; width: auto; }
+  #params { right: 12px; width: min(300px, calc(100vw - 24px)); }
+  #dossier { right: 12px; width: min(320px, calc(100vw - 24px)); max-height: 62vh; overflow-y: auto; }
 }
 
 /* ------------------------------------------------------------- intro */
