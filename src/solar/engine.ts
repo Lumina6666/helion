@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
-  MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD,
+  MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
 } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
@@ -29,6 +29,7 @@ export interface HudSnapshot {
   sound: boolean;
   ephemeris: boolean;
   expert: boolean;
+  surfaceId: string;
   shotName: string;
   focusId: string;
   focusName: string;
@@ -80,6 +81,8 @@ interface PlanetNode {
   period: number;          // seconds per orbit at 1×
   label?: HTMLElement;
   ring?: THREE.Mesh;
+  atmo?: THREE.Mesh;         // atmosphere shell — hidden in surface view
+  orbitRing?: THREE.Line;    // local orbit circle (moon) — hidden in surface view
 }
 
 interface Tween {
@@ -156,6 +159,15 @@ export class SolarEngine {
   private expert = false;
   private eventLog: Array<{ jd: number; text: string }> = [];
   private lastEventJd: number | null = null;
+  private surface: {
+    node: PlanetNode;
+    savedCam: THREE.Vector3;
+    savedTarget: THREE.Vector3;
+    savedMin: number;
+    savedMax: number;
+    savedNear: number;
+    firstTick: boolean;
+  } | null = null;
   private probe: {
     phase: ProbePhase;
     outcome: string;
@@ -341,7 +353,7 @@ export class SolarEngine {
     pivot.add(ring);
 
     const label = this.makeLabel(spec);
-    const node: PlanetNode = { spec, pivot, mesh, body, angle: 0, period: 0, label };
+    const node: PlanetNode = { spec, pivot, mesh, body, angle: 0, period: 0, label, orbitRing: ring };
     this.planets.push(node);
     this.moonNode = node;
   }
@@ -776,7 +788,11 @@ export class SolarEngine {
 
     // atmosphere rim glow
     const atmo = ATMO[spec.id];
-    if (atmo) body.add(this.makeAtmosphere(spec.radius * atmo.scale, atmo.color, atmo.k));
+    let atmoMesh: THREE.Mesh | undefined;
+    if (atmo) {
+      atmoMesh = this.makeAtmosphere(spec.radius * atmo.scale, atmo.color, atmo.k);
+      body.add(atmoMesh);
+    }
 
     // rings
     let ring: THREE.Mesh | undefined;
@@ -825,7 +841,7 @@ export class SolarEngine {
     this.labelLayer.appendChild(label);
 
     return {
-      spec, pivot, mesh, body, ring, label,
+      spec, pivot, mesh, body, ring, atmo: atmoMesh, label,
       angle: Math.random() * Math.PI * 2,
       period: keplerPeriod(spec.distance),
     };
@@ -889,6 +905,7 @@ export class SolarEngine {
     this.cine = on;
     this.controls.enabled = !on;
     if (on) {
+      if (this.surface) this.exitSurfaceView(true);
       this.tween = null;
       this.cineShot = 0;
       this.cineTime = 0;
@@ -905,6 +922,7 @@ export class SolarEngine {
     const v = VIEWS[i];
     if (!v) return;
     this.setCine(false);
+    if (this.surface) this.exitSurfaceView(true);
     this.focus = null;
     const tgt = new THREE.Vector3(0, 0, 0);
     const pos = new THREE.Vector3(
@@ -947,6 +965,7 @@ export class SolarEngine {
   focusPlanet(node: PlanetNode) {
     this.setCine(false);
     this.probeFollow = false;
+    if (this.surface) this.exitSurfaceView(true);
     this.focus = node;
     this.tween = null;
     this.focusSettle = true;
@@ -1044,6 +1063,95 @@ export class SolarEngine {
   // Prediction game — solve the real date of the chosen event from *now*.
   solvePrediction(type: EventType, a: string, b: string): number | null {
     return solveEvent(type, a, b, BASE_JD + this.simDays);
+  }
+
+  // ------------------------------------------------------------- surface view
+  isSurfaceView(): boolean { return this.surface !== null; }
+
+  // stand on a planet's surface and look at the sky
+  enterSurfaceView(node?: PlanetNode) {
+    if (this.surface) this.exitSurfaceView(true);
+    const target = node ?? this.focus ?? this.planets.find(p => p.spec.id === 'earth');
+    if (!target) return;
+    this.setCine(false);
+    this.tween = null;
+    this.probeFollow = false;
+    this.surface = {
+      node: target,
+      savedCam: this.camera.position.clone(),
+      savedTarget: this.controls.target.clone(),
+      savedMin: this.controls.minDistance,
+      savedMax: this.controls.maxDistance,
+      savedNear: this.camera.near,
+      firstTick: true,
+    };
+    this.controls.minDistance = 0.02;
+    this.controls.maxDistance = 0.6;
+    // the ground is centimeters away — the default near plane would clip it
+    this.camera.near = 0.002;
+    this.camera.updateProjectionMatrix();
+    // orbit rings & the host's own shell look wrong from the ground — hide them
+    this.orbitLines.forEach(l => (l.visible = false));
+    if (target.atmo) target.atmo.visible = false;
+    if (target.ring) target.ring.visible = false;
+    if (target.orbitRing) target.orbitRing.visible = false;
+    if (target.spec.id === 'earth' && this.earthClouds) this.earthClouds.visible = false;
+    this.toast(STR[this.lang].toast.surfaceOn + this.planetName(target));
+    this.emitSnapshot();
+  }
+
+  exitSurfaceView(silent = false) {
+    const s = this.surface;
+    if (!s) return;
+    this.surface = null;
+    this.controls.minDistance = s.savedMin;
+    this.controls.maxDistance = s.savedMax;
+    this.camera.near = s.savedNear;
+    this.camera.updateProjectionMatrix();
+    this.camera.position.copy(s.savedCam);
+    this.controls.target.copy(s.savedTarget);
+    this.orbitLines.forEach(l => (l.visible = true));
+    if (s.node.atmo) s.node.atmo.visible = true;
+    if (s.node.ring) s.node.ring.visible = true;
+    if (s.node.orbitRing) s.node.orbitRing.visible = true;
+    if (s.node.spec.id === 'earth' && this.earthClouds) this.earthClouds.visible = true;
+    if (!silent) this.toast(STR[this.lang].toast.surfaceOff);
+    this.emitSnapshot();
+  }
+
+  private updateSurface() {
+    const s = this.surface!;
+    const center = s.node.body.getWorldPosition(new THREE.Vector3());
+    const visR = Math.max(s.node.spec.radius * this.params.planetScale, 0.05);
+    // landing site: sun sits ~25° above the horizon
+    const toSun = center.clone().negate().normalize();
+    const perp = new THREE.Vector3(0, 1, 0).cross(toSun);
+    if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0);
+    perp.normalize();
+    const up = toSun.clone().multiplyScalar(0.42).addScaledVector(perp, 0.91).normalize();
+    const camPos = center.clone().addScaledVector(up, visR * 1.02 + 0.01);
+
+    // keep the user's current look direction while glued to the site;
+    // on entry, face the Sun above the horizon.
+    // NOTE: camera.up stays world-up — OrbitControls caches its up-basis at
+    // construction, and our sites are near the ecliptic so the horizon is
+    // already level.
+    const look = this.controls.target.clone().sub(this.camera.position);
+    if (s.firstTick || look.lengthSq() < 1e-8) {
+      look.copy(toSun).addScaledVector(up, -toSun.dot(up)).normalize(); // horizontal, toward the Sun
+      s.firstTick = false;
+    } else {
+      look.normalize();
+    }
+    this.camera.position.copy(camPos);
+    this.controls.target.copy(camPos).addScaledVector(look, 0.3);
+  }
+
+  // real angular diameter of the Sun seen from a body (degrees)
+  sunAngularDeg(id: string): number | null {
+    const au = DIST_AU[id];
+    if (!au) return null;
+    return 2 * Math.atan(695700 / (au * 1.496e8)) * 180 / Math.PI;
   }
 
   // ------------------------------------------------------------- expert mode & event log
@@ -1251,6 +1359,7 @@ export class SolarEngine {
 
   enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
     if (this.probe) this.exitProbeMode();
+    if (this.surface) this.exitSurfaceView(true);
     if (!this.ephemOn) this.ephemOn = true; // physics needs real positions
 
     const mesh = new THREE.Group();
@@ -1666,6 +1775,7 @@ export class SolarEngine {
       sound: this.ambience.isOn,
       ephemeris: this.ephemOn,
       expert: this.expert,
+      surfaceId: this.surface ? this.surface.node.spec.id : '',
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
       focusId: this.focus?.spec.id ?? 'sun',
       focusName: this.focus ? this.planetName(this.focus) : STR[this.lang].sun,
@@ -1779,7 +1889,8 @@ export class SolarEngine {
     if (this.sunGlow2) this.sunGlow2.scale.setScalar(SUN_RADIUS * 8.5 * (1 + 0.05 * Math.sin(this.pulseT * 0.9 + 1.3)));
 
     // camera modes
-    if (this.cine) this.updateCine(dt);
+    if (this.surface) this.updateSurface();
+    else if (this.cine) this.updateCine(dt);
     else if (this.tween) this.updateTween(dt);
     else if (this.probeFollow && this.probe) this.followProbeCam(dt);
     else if (this.focus) this.followFocus(dt);

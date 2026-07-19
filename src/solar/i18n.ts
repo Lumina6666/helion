@@ -91,6 +91,11 @@ export interface Strings {
   scaleTitle: string;
   scaleSunDist: string;   // {d} = scaled distance
   scaleMoon: string;
+  surfaceBtn: string;
+  surfaceInfoTitle: string;
+  surfaceSunAng: string;
+  surfaceSunDist: string;
+  surfaceHint: string;
   statusLabel: string;
   phaseAim: string;
   phaseFlying: string;
@@ -130,6 +135,8 @@ export interface Strings {
     burnDone: string;
     probeFollowOn: string;
     probeFollowOff: string;
+    surfaceOn: string;
+    surfaceOff: string;
     out_flyby: string;
     out_impact: string;
     out_captured: string;
@@ -232,6 +239,11 @@ export const STR: Record<Lang, Strings> = {
     scaleTitle: 'TRUE SCALE',
     scaleSunDist: 'AS A 1 CM BALL — THE SUN WOULD BE {d} AWAY',
     scaleMoon: 'AND THE MOON JUST 30 CM FROM EARTH',
+    surfaceBtn: '🌅 SURFACE VIEW',
+    surfaceInfoTitle: 'GROUND OBSERVATION',
+    surfaceSunAng: 'SUN ANGULAR SIZE (TRUE)',
+    surfaceSunDist: 'TRUE SUN DISTANCE',
+    surfaceHint: 'DRAG TO LOOK AROUND · B / ESC TO LEAVE',
     statusLabel: 'STATUS',
     phaseAim: 'AIMING',
     phaseFlying: 'IN FLIGHT',
@@ -271,6 +283,8 @@ export const STR: Record<Lang, Strings> = {
       burnDone: 'COURSE CORRECTION — Δv 0.3 km/s',
       probeFollowOn: 'CHASE CAM — TRACKING PROBE',
       probeFollowOff: 'CHASE CAM RELEASED',
+      surfaceOn: 'SURFACE VIEW — LANDED ON ',
+      surfaceOff: 'SURFACE VIEW OFF',
       out_flyby: 'FLYBY SUCCESS — TARGET REACHED',
       out_impact: 'DIRECT HIT — IMPACT CONFIRMED',
       out_captured: 'ORBIT CAPTURE ACHIEVED',
@@ -371,6 +385,11 @@ export const STR: Record<Lang, Strings> = {
     scaleTitle: '真实尺度',
     scaleSunDist: '若缩小为 1 cm 小球 — 太阳在 {d} 之外',
     scaleMoon: '而月球距地球仅 30 cm',
+    surfaceBtn: '🌅 表面视角',
+    surfaceInfoTitle: '地面观测',
+    surfaceSunAng: '太阳视角直径（真实值）',
+    surfaceSunDist: '真实日距',
+    surfaceHint: '拖动环视 · B / ESC 返回太空',
     statusLabel: '状态',
     phaseAim: '瞄准中',
     phaseFlying: '飞行中',
@@ -410,6 +429,8 @@ export const STR: Record<Lang, Strings> = {
       burnDone: '轨道修正 — Δv 0.3 km/s',
       probeFollowOn: '跟踪视角 — 锁定探测器',
       probeFollowOff: '已解除跟踪视角',
+      surfaceOn: '表面视角 — 已登陆',
+      surfaceOff: '已离开表面视角',
       out_flyby: '飞掠成功 — 已抵达目标',
       out_impact: '直接命中 — 撞击确认',
       out_captured: '环绕捕获成功',

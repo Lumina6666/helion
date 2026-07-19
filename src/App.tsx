@@ -179,7 +179,12 @@ export default function App() {
           break;
         }
         case 'v': eng.toggleProbeFollow(); break;
-        case 'escape': eng.clearFocus(); break;
+        case 'b': {
+          if (eng.isSurfaceView()) eng.exitSurfaceView();
+          else eng.enterSurfaceView();
+          break;
+        }
+        case 'escape': eng.exitSurfaceView(); eng.clearFocus(); break;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -392,6 +397,12 @@ export default function App() {
             );
           })()}
           <div className="d-blurb">{lang === 'zh' ? dossier.blurbCn : dossier.blurb}</div>
+          {focusId !== 'sun' && (
+            <button className="hbtn wide" style={{ marginTop: 8 }}
+              onClick={() => eng()?.enterSurfaceView()}>
+              {t.surfaceBtn}
+            </button>
+          )}
         </div>
       )}
 
@@ -474,6 +485,29 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {snap?.surfaceId && (
+        <div id="surfaceinfo" className="ctl">
+          <div className="p-head">
+            <span className="p-title">{t.surfaceInfoTitle} · {bodyName(snap.surfaceId, lang)}</span>
+          </div>
+          {(() => {
+            const ang = eng()?.sunAngularDeg(snap.surfaceId);
+            const au = DIST_AU[snap.surfaceId];
+            return (
+              <>
+                {ang != null && (
+                  <div className="d-row"><span>{t.surfaceSunAng}</span><span className="p-val">{ang.toFixed(2)}°</span></div>
+                )}
+                {au != null && (
+                  <div className="d-row"><span>{t.surfaceSunDist}</span><span className="p-val">{au} AU</span></div>
+                )}
+              </>
+            );
+          })()}
+          <div className="si-hint">{t.surfaceHint}</div>
+        </div>
+      )}
 
       {snap?.expert && (
         <div id="eventlog" className="ctl">
