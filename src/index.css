@@ -550,7 +550,7 @@ body { position: fixed; inset: 0; }
   left: 40px;
   bottom: 96px;
   width: 340px;
-  max-height: 220px;
+  max-height: 300px;
   overflow-y: auto;
   background: linear-gradient(165deg, rgba(8, 18, 32, .78), rgba(4, 8, 16, .68));
   backdrop-filter: blur(8px);
@@ -566,6 +566,16 @@ body { position: fixed; inset: 0; }
   letter-spacing: .14em;
   color: var(--cyan-dim);
   padding: 6px 0;
+}
+#eventlog .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+#eventlog .p-row { margin-bottom: 8px; }
+#eventlog .p-meta.dim span { opacity: .55; font-size: 7.5px; }
+#eventlog .hbtn:disabled { opacity: .35; cursor: default; }
+.p-label.lag-label {
+  font-size: 8px;
+  letter-spacing: .08em;
+  text-shadow: 0 0 6px rgba(0, 0, 0, .9);
+  pointer-events: none;
 }
 .log-row {
   display: grid;

@@ -88,6 +88,16 @@ export interface Strings {
   expertBtn: string;
   logTitle: string;
   logEmpty: string;
+  layerTitle: string;
+  layerWell: string;
+  layerLagrange: string;
+  expTitle: string;
+  expInject: string;
+  expReset: string;
+  expHint: string;
+  logExpInject: string;
+  logExpReset: string;
+  logExpResetJump: string;
   scaleTitle: string;
   scaleSunDist: string;   // {d} = scaled distance
   scaleMoon: string;
@@ -137,6 +147,14 @@ export interface Strings {
     probeFollowOff: string;
     surfaceOn: string;
     surfaceOff: string;
+    wellOn: string;
+    wellOff: string;
+    lagrangeOn: string;
+    lagrangeOff: string;
+    expInjected: string;
+    expReset: string;
+    expResetJump: string;
+    expNoProbe: string;
     out_flyby: string;
     out_impact: string;
     out_captured: string;
@@ -236,6 +254,16 @@ export const STR: Record<Lang, Strings> = {
     expertBtn: '📋 EXPERT',
     logTitle: 'EVENT LOG',
     logEmpty: 'AWAITING EVENTS…',
+    layerTitle: 'OVERLAYS',
+    layerWell: 'GRAVITY WELL',
+    layerLagrange: 'LAGRANGE POINTS',
+    expTitle: 'N-BODY EXPERIMENT',
+    expInject: '☄ INJECT ROGUE OBJECT',
+    expReset: 'RESET SOLAR SYSTEM',
+    expHint: '13 Mᴊ BROWN DWARF · 42 AU · FULL MUTUAL GRAVITY',
+    logExpInject: 'Rogue brown dwarf (13 Mᴊ) injected at 42 AU — N-body experiment live',
+    logExpReset: 'Solar system restored to analytic ephemeris',
+    logExpResetJump: 'Time jump — experiment reset to analytic ephemeris',
     scaleTitle: 'TRUE SCALE',
     scaleSunDist: 'AS A 1 CM BALL — THE SUN WOULD BE {d} AWAY',
     scaleMoon: 'AND THE MOON JUST 30 CM FROM EARTH',
@@ -285,6 +313,14 @@ export const STR: Record<Lang, Strings> = {
       probeFollowOff: 'CHASE CAM RELEASED',
       surfaceOn: 'SURFACE VIEW — LANDED ON ',
       surfaceOff: 'SURFACE VIEW OFF',
+      wellOn: 'GRAVITY WELL OVERLAY ON',
+      wellOff: 'GRAVITY WELL OVERLAY OFF',
+      lagrangeOn: 'LAGRANGE POINTS ON',
+      lagrangeOff: 'LAGRANGE POINTS OFF',
+      expInjected: 'ROGUE OBJECT INJECTED — N-BODY MODE',
+      expReset: 'SOLAR SYSTEM RESET',
+      expResetJump: 'TIME JUMP — EXPERIMENT RESET',
+      expNoProbe: 'PROBE UNAVAILABLE DURING N-BODY EXPERIMENT',
       out_flyby: 'FLYBY SUCCESS — TARGET REACHED',
       out_impact: 'DIRECT HIT — IMPACT CONFIRMED',
       out_captured: 'ORBIT CAPTURE ACHIEVED',
@@ -382,6 +418,16 @@ export const STR: Record<Lang, Strings> = {
     expertBtn: '📋 专家',
     logTitle: '事件日志',
     logEmpty: '等待事件发生…',
+    layerTitle: '叠加图层',
+    layerWell: '引力势阱',
+    layerLagrange: '拉格朗日点',
+    expTitle: 'N 体实验',
+    expInject: '☄ 注入流浪天体',
+    expReset: '重置太阳系',
+    expHint: '13 倍木星质量褐矮星 · 42 AU · 全引力互扰',
+    logExpInject: '流浪褐矮星（13 倍木星质量）已于 42 AU 处注入 — N 体实验运行中',
+    logExpReset: '太阳系已还原为解析星历',
+    logExpResetJump: '时间跳跃 — 实验已重置为解析星历',
     scaleTitle: '真实尺度',
     scaleSunDist: '若缩小为 1 cm 小球 — 太阳在 {d} 之外',
     scaleMoon: '而月球距地球仅 30 cm',
@@ -431,6 +477,14 @@ export const STR: Record<Lang, Strings> = {
       probeFollowOff: '已解除跟踪视角',
       surfaceOn: '表面视角 — 已登陆',
       surfaceOff: '已离开表面视角',
+      wellOn: '引力势阱叠加层已开启',
+      wellOff: '引力势阱叠加层已关闭',
+      lagrangeOn: '拉格朗日点已开启',
+      lagrangeOff: '拉格朗日点已关闭',
+      expInjected: '流浪天体已注入 — N 体模式',
+      expReset: '太阳系已重置',
+      expResetJump: '时间跳跃 — 实验已重置',
+      expNoProbe: 'N 体实验运行中，探测器模式不可用',
       out_flyby: '飞掠成功 — 已抵达目标',
       out_impact: '直接命中 — 撞击确认',
       out_captured: '环绕捕获成功',

@@ -512,6 +512,27 @@ export default function App() {
       {snap?.expert && (
         <div id="eventlog" className="ctl">
           <div className="p-head"><span className="p-title">{t.logTitle}</span></div>
+          <div className="p-row">
+            <div className="p-meta"><span>{t.layerTitle}</span></div>
+            <div className="grid2">
+              <button className={`hbtn ${snap.well ? 'active' : ''}`} id="btn-well"
+                onClick={() => eng()?.toggleWell()}>{t.layerWell}</button>
+              <button className={`hbtn ${snap.lagrange ? 'active' : ''}`} id="btn-lagrange"
+                onClick={() => eng()?.toggleLagrange()}>{t.layerLagrange}</button>
+            </div>
+          </div>
+          <div className="p-row">
+            <div className="p-meta"><span>{t.expTitle}</span></div>
+            <div className="grid2">
+              <button className={`hbtn ${snap.experiment ? 'active' : ''}`} id="btn-inject"
+                disabled={snap.experiment}
+                onClick={() => eng()?.injectRogue()}>{t.expInject}</button>
+              <button className="hbtn" id="btn-expreset"
+                disabled={!snap.experiment}
+                onClick={() => eng()?.resetExperiment()}>{t.expReset}</button>
+            </div>
+            <div className="p-meta dim"><span>{t.expHint}</span></div>
+          </div>
           {log.length === 0 && <div className="log-empty">{t.logEmpty}</div>}
           {log.map((e, i) => (
             <div className="log-row" key={`${e.date}${e.text}${i}`}>

@@ -30,6 +30,9 @@ export interface HudSnapshot {
   ephemeris: boolean;
   expert: boolean;
   surfaceId: string;
+  well: boolean;
+  lagrange: boolean;
+  experiment: boolean;
   shotName: string;
   focusId: string;
   focusName: string;
@@ -71,6 +74,8 @@ export interface Telemetry {
 
 const BASE_DATE = Date.UTC(2026, 6, 17);
 const DEG = Math.PI / 180;
+// scratch accel buffer for the rogue-object N-body experiment (max 10 bodies)
+const expAcc = new Float64Array(30);
 
 interface PlanetNode {
   spec: PlanetSpec;
@@ -159,6 +164,24 @@ export class SolarEngine {
   private expert = false;
   private eventLog: Array<{ jd: number; text: string }> = [];
   private lastEventJd: number | null = null;
+  private well: THREE.Mesh | null = null;
+  private lagrangeGroup: THREE.Group | null = null;
+  private lagLabels: HTMLElement[] = [];
+  private trojans: THREE.Points[] = [];
+  private experiment: {
+    bodies: Array<{
+      id: string; mu: number;
+      x: number; y: number; z: number;
+      vx: number; vy: number; vz: number;
+    }>;
+    jd: number;
+    sinceTrail: number;
+    rogueMesh: THREE.Group;
+    trail: THREE.Line;
+    trailAttr: THREE.BufferAttribute;
+    trailCount: number;
+    lastTrailPos: THREE.Vector3;
+  } | null = null;
   private surface: {
     node: PlanetNode;
     savedCam: THREE.Vector3;
@@ -1021,6 +1044,7 @@ export class SolarEngine {
   // Jump the simulation clock to an absolute date (UTC).
   jumpToDate(d: Date) {
     this.simDays = (d.getTime() - BASE_DATE) / 86400000;
+    if (this.experiment) this.resetExperiment(true); // integrated state can't time-jump
     this.eventCache = null;
     this.lastEventJd = null;
     this.resetHalleyTrail();
@@ -1030,6 +1054,7 @@ export class SolarEngine {
   // Scrub relative to the current sim day (timeline dragging).
   scrubToDay(day: number) {
     this.simDays = day;
+    if (this.experiment) this.resetExperiment(true);
     this.eventCache = null;
     this.lastEventJd = null;
     this.resetHalleyTrail();
@@ -1204,6 +1229,307 @@ export class SolarEngine {
     }
   }
 
+  // ------------------------------------------------------------- batch 3
+  // Gravity well (spacetime-fabric grid), Lagrange points + Trojan swarms,
+  // and a full N-body "rogue object" experiment mode.
+
+  toggleWell() {
+    const t = STR[this.lang];
+    if (this.well) {
+      this.scene.remove(this.well);
+      this.well.geometry.dispose();
+      (this.well.material as THREE.Material).dispose();
+      this.well = null;
+      this.toast(t.toast.wellOff);
+    } else {
+      const geo = new THREE.PlaneGeometry(200, 200, 80, 80);
+      geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        const r = Math.hypot(x, z);
+        pos.setY(i, -16 / (1 + r / 8));
+      }
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x35e0d8, wireframe: true, transparent: true, opacity: 0.11,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      this.well = new THREE.Mesh(geo, mat);
+      this.well.renderOrder = -2;
+      this.scene.add(this.well);
+      this.toast(t.toast.wellOn);
+    }
+    this.emitSnapshot();
+  }
+
+  toggleLagrange() {
+    const t = STR[this.lang];
+    if (this.lagrangeGroup) {
+      for (const child of this.lagrangeGroup.children) {
+        const m = child as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mat = m.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
+      }
+      for (const el of this.lagLabels) el.remove();
+      this.lagLabels = [];
+      this.trojans = [];
+      this.scene.remove(this.lagrangeGroup);
+      this.lagrangeGroup = null;
+      this.toast(t.toast.lagrangeOff);
+    } else {
+      const g = new THREE.Group();
+      for (const pid of ['earth', 'jupiter']) {
+        const color = pid === 'earth' ? '#7fd8ff' : '#ffc36b';
+        const colorHex = pid === 'earth' ? 0x7fd8ff : 0xffc36b;
+        for (let li = 1; li <= 5; li++) {
+          const marker = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.22),
+            new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.9, depthWrite: false }),
+          );
+          marker.userData = { pid, li };
+          g.add(marker);
+          const el = document.createElement('div');
+          el.className = 'p-label lag-label';
+          el.textContent = `L${li}`;
+          el.style.color = color;
+          this.labelLayer.appendChild(el);
+          this.lagLabels.push(el);
+        }
+      }
+      // Trojan swarms around Jupiter's L4 / L5
+      for (const li of [4, 5]) {
+        const n = 400;
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = Math.sqrt(Math.random()) * 3.5;
+          arr[i * 3] = Math.cos(a) * rr;
+          arr[i * 3 + 1] = (Math.random() * 2 - 1) * 1.2;
+          arr[i * 3 + 2] = Math.sin(a) * rr;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+        const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+          color: 0xd8c49a, size: 0.14, transparent: true, opacity: 0.8, depthWrite: false,
+        }));
+        pts.userData = { pid: 'jupiter', li };
+        this.trojans.push(pts);
+        g.add(pts);
+      }
+      this.lagrangeGroup = g;
+      this.scene.add(g);
+      this.toast(t.toast.lagrangeOn);
+    }
+    this.emitSnapshot();
+  }
+
+  // reposition L1–L5 markers / Trojan clouds from live planet world positions
+  private updateLagrange() {
+    const g = this.lagrangeGroup;
+    if (!g) return;
+    const UP = new THREE.Vector3(0, 1, 0);
+    for (const child of g.children) {
+      const ud = child.userData as { pid: string; li: number };
+      const node = this.planets.find(p => p.spec.id === ud.pid);
+      if (!node) continue;
+      const P = node.body.getWorldPosition(new THREE.Vector3());
+      const R = P.length();
+      if (R < 1e-6) continue;
+      const mu = PLANET_MU[ud.pid] ?? 0;
+      const h = Math.cbrt(mu / (3 * MU_SUN));
+      const off = Math.max(R * h, 1.3);
+      const dir = P.clone().normalize();
+      let v: THREE.Vector3;
+      switch (ud.li) {
+        case 1: v = P.clone().sub(dir.multiplyScalar(off)); break;
+        case 2: v = P.clone().add(dir.multiplyScalar(off)); break;
+        case 3: v = P.clone().negate(); break;
+        case 4: v = P.clone().applyAxisAngle(UP, -Math.PI / 3); break; // L4 leads by 60°
+        default: v = P.clone().applyAxisAngle(UP, Math.PI / 3); break;  // L5 trails by 60°
+      }
+      child.position.copy(v);
+    }
+  }
+
+  // ---- rogue-object N-body experiment --------------------------------------
+  // 8 planets + a 13-Jupiter-mass brown dwarf, full mutual gravity, Sun pinned.
+  injectRogue() {
+    if (this.experiment) return;
+    if (this.probe) this.exitProbeMode();
+    const t = STR[this.lang];
+    const jd = BASE_JD + this.simDays;
+    const ids = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+    const bodies = ids.map(id => {
+      const p = helioState(id, jd);
+      const v = bodyVelocity(id, jd);
+      return { id, mu: PLANET_MU[id], x: p.x, y: p.y, z: p.z, vx: v[0], vy: v[1], vz: v[2] };
+    });
+    // brown dwarf inbound from 42 AU, 12° above the ecliptic, ~5.5 km/s
+    const muR = (13 * MU_SUN) / 1047.348644;
+    const phi = 100 * DEG, inc = 12 * DEG, R0 = 42;
+    const px = R0 * Math.cos(inc) * Math.cos(phi);
+    const py = R0 * Math.cos(inc) * Math.sin(phi);
+    const pz = R0 * Math.sin(inc);
+    const vt = 4.5 * KMS_TO_AUDAY, vr = -3.2 * KMS_TO_AUDAY;
+    const tx = -Math.sin(phi), ty = Math.cos(phi);
+    bodies.push({
+      id: 'rogue', mu: muR, x: px, y: py, z: pz,
+      vx: vt * tx + (vr * px) / R0, vy: vt * ty + (vr * py) / R0, vz: (vr * pz) / R0,
+    });
+
+    // brown dwarf visual: dim red dwarf-like glowing sphere + glow sprite
+    const rogueMesh = new THREE.Group();
+    rogueMesh.add(new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 24, 18),
+      new THREE.MeshStandardMaterial({ color: 0x3a1408, emissive: 0xb03410, emissiveIntensity: 1.1, roughness: 0.85 }),
+    ));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite('rgba(255,120,60,0.85)', 'rgba(180,40,10,0.3)'),
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.75,
+    }));
+    glow.scale.setScalar(3.2);
+    rogueMesh.add(glow);
+    const sp0 = auToScenePos(px, py, pz);
+    rogueMesh.position.set(sp0.x, sp0.y, sp0.z);
+    this.scene.add(rogueMesh);
+
+    // trail
+    const MAXP = 12000;
+    const tArr = new Float32Array(MAXP * 3);
+    const tGeo = new THREE.BufferGeometry();
+    const trailAttr = new THREE.BufferAttribute(tArr, 3);
+    tGeo.setAttribute('position', trailAttr);
+    tGeo.setDrawRange(0, 0);
+    const trail = new THREE.Line(tGeo, new THREE.LineBasicMaterial({
+      color: 0xff6a3a, transparent: true, opacity: 0.75, depthWrite: false,
+    }));
+    trail.frustumCulled = false;
+    this.scene.add(trail);
+
+    this.experiment = {
+      bodies, jd, sinceTrail: 0,
+      rogueMesh, trail, trailAttr, trailCount: 0,
+      lastTrailPos: new THREE.Vector3(sp0.x, sp0.y, sp0.z),
+    };
+    this.pushExpTrailPoint(sp0.x, sp0.y, sp0.z);
+    // analytic orbit rings no longer match — hide them while the experiment runs
+    this.orbitLines.forEach(l => (l.visible = false));
+    this.pushLog(jd, t.logExpInject);
+    this.toast(t.toast.expInjected);
+    this.emitSnapshot();
+  }
+
+  resetExperiment(silent = false) {
+    const ex = this.experiment;
+    if (!ex) return;
+    const t = STR[this.lang];
+    this.scene.remove(ex.rogueMesh);
+    ex.rogueMesh.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      if (mat) mat.dispose();
+    });
+    this.scene.remove(ex.trail);
+    ex.trail.geometry.dispose();
+    (ex.trail.material as THREE.Material).dispose();
+    this.experiment = null;
+    this.orbitLines.forEach(l => (l.visible = true));
+    const jd = BASE_JD + this.simDays;
+    this.pushLog(jd, silent ? t.logExpResetJump : t.logExpReset);
+    this.toast(silent ? t.toast.expResetJump : t.toast.expReset);
+    this.emitSnapshot();
+  }
+
+  // heliocentric accel on body i: Sun + direct & indirect terms of all others
+  private expAccel(i: number, out: [number, number, number]) {
+    const bs = this.experiment!.bodies;
+    const b = bs[i];
+    const r2 = b.x * b.x + b.y * b.y + b.z * b.z;
+    const r = Math.sqrt(Math.max(r2, 1e-12));
+    const f = -MU_SUN / (r2 * r);
+    let ax = b.x * f, ay = b.y * f, az = b.z * f;
+    for (let j = 0; j < bs.length; j++) {
+      if (j === i) continue;
+      const o = bs[j];
+      const dx = o.x - b.x, dy = o.y - b.y, dz = o.z - b.z;
+      const d2 = Math.max(dx * dx + dy * dy + dz * dz, 1e-12);
+      const d = Math.sqrt(d2);
+      let g = o.mu / (d2 * d);
+      ax += dx * g; ay += dy * g; az += dz * g;
+      const pr2 = o.x * o.x + o.y * o.y + o.z * o.z;
+      const pr = Math.sqrt(Math.max(pr2, 1e-12));
+      g = o.mu / (pr2 * pr);
+      ax -= o.x * g; ay -= o.y * g; az -= o.z * g;
+    }
+    out[0] = ax; out[1] = ay; out[2] = az;
+  }
+
+  private expStep(dt: number) {
+    const bs = this.experiment!.bodies;
+    const n = bs.length;
+    const tmp: [number, number, number] = [0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      this.expAccel(i, tmp);
+      expAcc[i * 3] = tmp[0]; expAcc[i * 3 + 1] = tmp[1]; expAcc[i * 3 + 2] = tmp[2];
+    }
+    for (let i = 0; i < n; i++) {
+      const b = bs[i];
+      b.x += b.vx * dt + 0.5 * expAcc[i * 3] * dt * dt;
+      b.y += b.vy * dt + 0.5 * expAcc[i * 3 + 1] * dt * dt;
+      b.z += b.vz * dt + 0.5 * expAcc[i * 3 + 2] * dt * dt;
+    }
+    for (let i = 0; i < n; i++) {
+      this.expAccel(i, tmp);
+      const b = bs[i];
+      b.vx += 0.5 * (expAcc[i * 3] + tmp[0]) * dt;
+      b.vy += 0.5 * (expAcc[i * 3 + 1] + tmp[1]) * dt;
+      b.vz += 0.5 * (expAcc[i * 3 + 2] + tmp[2]) * dt;
+    }
+  }
+
+  private pushExpTrailPoint(x: number, y: number, z: number) {
+    const ex = this.experiment!;
+    if (ex.trailCount >= 12000) return;
+    ex.trailAttr.setXYZ(ex.trailCount, x, y, z);
+    ex.trailAttr.needsUpdate = true;
+    ex.trailCount++;
+    ex.trail.geometry.setDrawRange(0, ex.trailCount);
+    ex.lastTrailPos.set(x, y, z);
+  }
+
+  // integrate the experiment clock to jd, then drive all body scene positions
+  private updateExperiment(jd: number) {
+    const ex = this.experiment;
+    if (!ex) return;
+    let remaining = jd - ex.jd;
+    let guard = 0;
+    while (Math.abs(remaining) > 1e-9 && guard++ < 1600) {
+      const dtMag = Math.min(Math.abs(remaining), Math.max(0.05, Math.abs(remaining) / 1500));
+      const dt = Math.sign(remaining) * dtMag;
+      this.expStep(dt);
+      ex.jd += dt;
+      ex.sinceTrail += Math.abs(dt);
+      remaining = jd - ex.jd;
+      if (ex.sinceTrail >= 2) {
+        ex.sinceTrail = 0;
+        const rb = ex.bodies[ex.bodies.length - 1];
+        const sp = auToScenePos(rb.x, rb.y, rb.z);
+        this.pushExpTrailPoint(sp.x, sp.y, sp.z);
+      }
+    }
+    if (Math.abs(remaining) > 1e-9) ex.jd = jd; // fell behind — resync clock
+    for (const b of ex.bodies) {
+      const sp = auToScenePos(b.x, b.y, b.z);
+      if (b.id === 'rogue') ex.rogueMesh.position.set(sp.x, sp.y, sp.z);
+      else {
+        const node = this.planets.find(p => p.spec.id === b.id);
+        if (node) node.body.position.set(sp.x, sp.y, sp.z);
+      }
+    }
+  }
+
   // ------------------------------------------------------------- probe mode
   // Generic deep-space probe — hexagonal bus, high-gain dish, twin solar
   // wings, RTG, magnetometer boom, thruster cluster, beacon.
@@ -1359,6 +1685,7 @@ export class SolarEngine {
 
   enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
     if (this.probe) this.exitProbeMode();
+    if (this.experiment) { this.toast(STR[this.lang].toast.expNoProbe); return; }
     if (this.surface) this.exitSurfaceView(true);
     if (!this.ephemOn) this.ephemOn = true; // physics needs real positions
 
@@ -1776,6 +2103,9 @@ export class SolarEngine {
       ephemeris: this.ephemOn,
       expert: this.expert,
       surfaceId: this.surface ? this.surface.node.spec.id : '',
+      well: this.well !== null,
+      lagrange: this.lagrangeGroup !== null,
+      experiment: this.experiment !== null,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
       focusId: this.focus?.spec.id ?? 'sun',
       focusName: this.focus ? this.planetName(this.focus) : STR[this.lang].sun,
@@ -1821,6 +2151,7 @@ export class SolarEngine {
     // orbital mechanics
     const jd = BASE_JD + this.simDays;
     this.watchEvents(jd);
+    if (this.experiment) this.updateExperiment(jd);
     for (const p of this.planets) {
       if (p.spec.id === 'moon') {
         // lunar position: earth pos + offset rotating with the sun-earth line
@@ -1854,6 +2185,8 @@ export class SolarEngine {
             p.label.textContent = `${this.lang === 'zh' ? p.spec.cn : p.spec.name} · ${au.toFixed(1)} AU`;
           }
         }
+      } else if (this.experiment && PLANET_MU[p.spec.id] !== undefined) {
+        // position already driven by the N-body experiment integrator
       } else if (this.ephemOn) {
         const { lon, lat } = helioLonLat(p.spec.id, jd);
         const d = p.spec.distance;
@@ -1866,6 +2199,7 @@ export class SolarEngine {
     }
     this.updateCometTrail();
     this.updateProbe();
+    this.updateLagrange();
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
     // keep the belt clear of the planets at any planetScale: shrink the whole
@@ -2076,6 +2410,21 @@ export class SolarEngine {
       const a = THREE.MathUtils.clamp(1.4 - dist / 160, 0.15, 0.9);
       el.style.opacity = a.toFixed(2);
     }
+    // Lagrange-point labels ride their markers
+    if (this.lagrangeGroup && this.lagLabels.length > 0) {
+      const markers = this.lagrangeGroup.children.filter(c => (c as THREE.Mesh).geometry?.type === 'OctahedronGeometry');
+      for (let i = 0; i < markers.length && i < this.lagLabels.length; i++) {
+        const el = this.lagLabels[i];
+        markers[i].getWorldPosition(v);
+        const dist = v.distanceTo(this.camera.position);
+        v.project(this.camera);
+        if (v.z > 1 || v.z < -1) { el.style.opacity = '0'; continue; }
+        const x = (v.x * 0.5 + 0.5) * w;
+        const y = (-v.y * 0.5 + 0.5) * h;
+        el.style.transform = `translate(-50%,-190%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+        el.style.opacity = THREE.MathUtils.clamp(1.5 - dist / 140, 0.1, 0.85).toFixed(2);
+      }
+    }
   }
 
   getSimDate(): Date {
@@ -2084,6 +2433,9 @@ export class SolarEngine {
 
   dispose() {
     this.disposed = true;
+    if (this.experiment) this.resetExperiment(true);
+    if (this.lagrangeGroup) this.toggleLagrange();
+    if (this.well) this.toggleWell();
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.onResize);
     this.controls.dispose();
