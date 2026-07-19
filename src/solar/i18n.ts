@@ -92,6 +92,7 @@ export interface Strings {
   layerTitle: string;
   layerWell: string;
   layerLagrange: string;
+  layerHill: string;
   expTitle: string;
   expInject: string;
   expReset: string;
@@ -150,6 +151,8 @@ export interface Strings {
     surfaceOff: string;
     wellOn: string;
     wellOff: string;
+    hillOn: string;
+    hillOff: string;
     lagrangeOn: string;
     lagrangeOff: string;
     expInjected: string;
@@ -262,6 +265,7 @@ export const STR: Record<Lang, Strings> = {
     layerTitle: 'OVERLAYS',
     layerWell: 'GRAVITY WELL',
     layerLagrange: 'LAGRANGE POINTS',
+    layerHill: 'MOON HILL SPHERE',
     expTitle: 'N-BODY EXPERIMENT',
     expInject: '☄ INJECT ROGUE OBJECT',
     expReset: 'RESET SOLAR SYSTEM',
@@ -320,6 +324,8 @@ export const STR: Record<Lang, Strings> = {
       surfaceOff: 'SURFACE VIEW OFF',
       wellOn: 'GRAVITY WELL OVERLAY ON',
       wellOff: 'GRAVITY WELL OVERLAY OFF',
+      hillOn: 'MOON HILL SPHERE ON',
+      hillOff: 'MOON HILL SPHERE OFF',
       lagrangeOn: 'LAGRANGE POINTS ON',
       lagrangeOff: 'LAGRANGE POINTS OFF',
       expInjected: 'ROGUE OBJECT INJECTED — N-BODY MODE',
@@ -430,6 +436,7 @@ export const STR: Record<Lang, Strings> = {
     layerTitle: '叠加图层',
     layerWell: '引力势阱',
     layerLagrange: '拉格朗日点',
+    layerHill: '月球希尔球',
     expTitle: 'N 体实验',
     expInject: '☄ 注入流浪天体',
     expReset: '重置太阳系',
@@ -488,6 +495,8 @@ export const STR: Record<Lang, Strings> = {
       surfaceOff: '已离开表面视角',
       wellOn: '引力势阱叠加层已开启',
       wellOff: '引力势阱叠加层已关闭',
+      hillOn: '月球希尔球已开启',
+      hillOff: '月球希尔球已关闭',
       lagrangeOn: '拉格朗日点已开启',
       lagrangeOff: '拉格朗日点已关闭',
       expInjected: '流浪天体已注入 — N 体模式',

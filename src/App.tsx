@@ -523,6 +523,8 @@ export default function App() {
                 onClick={() => eng()?.toggleWell()}>{t.layerWell}</button>
               <button className={`hbtn ${snap.lagrange ? 'active' : ''}`} id="btn-lagrange"
                 onClick={() => eng()?.toggleLagrange()}>{t.layerLagrange}</button>
+              <button className={`hbtn ${snap.hill ? 'active' : ''}`} id="btn-hill"
+                onClick={() => eng()?.toggleHill()}>{t.layerHill}</button>
             </div>
           </div>
           <div className="p-row">

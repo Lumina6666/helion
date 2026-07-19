@@ -37,6 +37,7 @@ export interface HudSnapshot {
   surfaceId: string;
   well: boolean;
   lagrange: boolean;
+  hill: boolean;
   experiment: boolean;
   bloom: boolean;
   shotName: string;
@@ -134,6 +135,9 @@ export class SolarEngine {
   private belt!: THREE.Group;
   private sun!: THREE.Mesh;
   private moonNode: PlanetNode | null = null;
+  private hillOn = false;
+  private moonHill: THREE.Mesh | null = null;   // wireframe cage: gravitational domain
+  private moonHalo: THREE.Mesh | null = null;   // fresnel shell: focus highlight
   private earthNode?: PlanetNode;
   private ephemOn = false;
   private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[]; tailMat: THREE.ShaderMaterial; coma: THREE.Sprite };
@@ -396,6 +400,49 @@ export class SolarEngine {
       new THREE.LineBasicMaterial({ color: 0x8a94a8, transparent: true, opacity: 0.35 }),
     );
     pivot.add(ring);
+
+    // Hill sphere — the Moon's gravitational domain: true ratio 61,500 km of the
+    // 384,400 km orbit ≈ 0.16 × MOON_SCENE_R (≈1.24× the displayed lunar disc)
+    const hill = new THREE.Mesh(
+      new THREE.SphereGeometry(MOON_SCENE_R * 0.16, 14, 9),
+      new THREE.MeshBasicMaterial({
+        color: 0x63d8d0, wireframe: true, transparent: true, opacity: 0.14,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }),
+    );
+    hill.visible = this.hillOn;
+    body.add(hill);
+    this.moonHill = hill;
+
+    // Fresnel halo — lit only while the Moon is focused (uStrength driven per-frame)
+    const haloMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      uniforms: {
+        uStrength: { value: 0 },
+        uColor: { value: new THREE.Color(0x9fd4e4) },
+      },
+      vertexShader: `
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal);
+          vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform float uStrength; uniform vec3 uColor;
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.5);
+          gl_FragColor = vec4(uColor, rim * uStrength);
+        }`,
+    });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(spec.radius * 1.18, 32, 24), haloMat);
+    body.add(halo);
+    this.moonHalo = halo;
 
     const label = this.makeLabel(spec);
     const node: PlanetNode = { spec, pivot, mesh, body, angle: 0, period: 0, label, orbitRing: ring };
@@ -1424,6 +1471,14 @@ export class SolarEngine {
   }
 
   // ------------------------------------------------------------- batch 3
+  // Moon Hill sphere overlay — resident layer, toggled from the expert panel
+  toggleHill() {
+    this.hillOn = !this.hillOn;
+    const t = STR[this.lang];
+    this.toast(this.hillOn ? t.toast.hillOn : t.toast.hillOff);
+    this.emitSnapshot();
+  }
+
   // Gravity well (spacetime-fabric grid), Lagrange points + Trojan swarms,
   // and a full N-body "rogue object" experiment mode.
 
@@ -2299,6 +2354,7 @@ export class SolarEngine {
       surfaceId: this.surface ? this.surface.node.spec.id : '',
       well: this.well !== null,
       lagrange: this.lagrangeGroup !== null,
+      hill: this.hillOn,
       experiment: this.experiment !== null,
       bloom: this.bloomOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
@@ -2363,6 +2419,14 @@ export class SolarEngine {
             Math.sin(A) * Math.cos(I) * MOON_SCENE_R,
           );
           p.mesh.rotation.y = -A; // tidally locked
+          // shells: hill cage obeys the layer toggle; fresnel halo is a focus highlight
+          const onMoonSurface = this.surface?.node === p;
+          if (this.moonHill) this.moonHill.visible = this.hillOn && !onMoonSurface;
+          if (this.moonHalo) {
+            const hm = this.moonHalo.material as THREE.ShaderMaterial;
+            const want = this.focus === p && !onMoonSurface ? 0.65 : 0;
+            hm.uniforms.uStrength.value += (want - hm.uniforms.uStrength.value) * Math.min(1, dt * 3);
+          }
         }
       } else if (p.spec.id === 'iss') {
         const earth = this.planets.find(pl => pl.spec.id === 'earth');
