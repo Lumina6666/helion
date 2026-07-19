@@ -411,28 +411,139 @@ export class SolarEngine {
     const body = new THREE.Group();
     pivot.add(body);
 
-    // station model: truss + habitation modules + twin solar wings
+    // station model: detailed ISS — lattice truss, 4 solar array pairs, radiators,
+    // pressurized module chain (Zvezda→Zarya→Unity→Destiny→Harmony→forward node),
+    // Columbus/Kibo labs, cupola, Canadarm2 and a docked crew capsule
     const station = new THREE.Group();
     const alu = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.45, metalness: 0.8 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xe6e9ec, roughness: 0.55, metalness: 0.35 });
     const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.4, metalness: 0.85, emissive: 0x201604 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.6, metalness: 0.6 });
     const panelBlue = new THREE.MeshStandardMaterial({ color: 0x22477e, roughness: 0.35, metalness: 0.5, emissive: 0x0a1830, emissiveIntensity: 0.7 });
-    const truss = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.018, 0.018), alu);
-    station.add(truss);
-    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.11, 10), alu);
-    core.rotation.z = Math.PI / 2;
-    core.userData.planetId = spec.id;
-    station.add(core);
-    const mod2 = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.07, 10), gold);
-    mod2.rotation.z = Math.PI / 2;
-    mod2.position.set(0.07, 0.02, 0.02);
-    station.add(mod2);
-    for (const sx of [-1, 1]) {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.004, 0.07), panelBlue);
-      wing.position.set(sx * 0.28, 0, 0);
-      station.add(wing);
+    const strut = (a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) => {
+      const d = b.clone().sub(a);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 6), mat);
+      m.position.copy(a).addScaledVector(d, 0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      station.add(m);
+    };
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
+    // --- integrated truss: square lattice of 4 longerons + frames + diagonals (X axis)
+    const T = 0.46;  // truss span
+    const g = 0.014; // lattice half-gauge
+    for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      strut(V(-T / 2, sy * g, sz * g), V(T / 2, sy * g, sz * g), 0.0035, alu);
     }
+    for (let i = 0; i <= 10; i++) {
+      const x = -T / 2 + (T / 10) * i;
+      strut(V(x, -g, -g), V(x, g, -g), 0.002, alu);
+      strut(V(x, -g, g), V(x, g, g), 0.002, alu);
+      strut(V(x, -g, -g), V(x, -g, g), 0.002, alu);
+      strut(V(x, g, -g), V(x, g, g), 0.002, alu);
+      if (i < 10) {
+        const x2 = -T / 2 + (T / 10) * (i + 1);
+        strut(V(x, g, -g), V(x2, -g, -g), 0.0015, alu);
+        strut(V(x, -g, g), V(x2, g, g), 0.0015, alu);
+      }
+    }
+
+    // --- 4 photovoltaic array pairs (S6/S4 port-starboard ends): gold frame + blue blanket
+    for (const sx of [-1, 1]) {
+      for (const ax of [0.16, 0.205]) {
+        const hx = sx * ax;
+        // gimbal hub
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.03, 8), gold);
+        hub.position.set(hx, 0, 0);
+        hub.rotation.x = Math.PI / 2;
+        station.add(hub);
+        for (const sz of [-1, 1]) {
+          const frame = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.0012, 0.148), gold);
+          frame.position.set(hx, -0.0016, sz * 0.084);
+          station.add(frame);
+          const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.0016, 0.14), panelBlue);
+          blanket.position.set(hx, 0, sz * 0.084);
+          station.add(blanket);
+        }
+      }
+      // --- radiators: 3 white panels per side, deployed forward of the truss
+      for (let i = 0; i < 3; i++) {
+        const rad = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.0012, 0.07), white);
+        rad.position.set(sx * (0.075 + i * 0.024), 0, 0.055);
+        station.add(rad);
+      }
+    }
+
+    // --- pressurized module chain along Z (aft +Z → forward −Z)
+    const mod = (r: number, len: number, z: number, mat: THREE.Material) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12), mat);
+      m.rotation.x = Math.PI / 2;
+      m.position.set(0, -0.004, z);
+      station.add(m);
+      return m;
+    };
+    mod(0.016, 0.075, 0.125, gold);                 // Zvezda service module (MLI gold)
+    mod(0.016, 0.055, 0.068, white);                // Zarya FGB
+    mod(0.015, 0.032, 0.032, alu);                  // Unity node
+    const core = mod(0.0165, 0.052, -0.006, alu);   // Destiny lab — pick target
+    core.userData.planetId = spec.id;
+    mod(0.015, 0.038, -0.048, alu);                 // Harmony node
+    mod(0.014, 0.03, -0.08, white);                 // forward node
+    // end cone (forward docking port)
+    const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.004, 0.02, 10), alu);
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(0, -0.004, -0.104);
+    station.add(nose);
+
+    // --- Columbus (starboard) & Kibo (port) labs hanging off Harmony
+    const columbus = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.045, 12), alu);
+    columbus.rotation.x = Math.PI / 2;
+    columbus.position.set(0.027, -0.004, -0.048);
+    station.add(columbus);
+    const kibo = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.05, 12), white);
+    kibo.rotation.x = Math.PI / 2;
+    kibo.position.set(-0.027, -0.004, -0.048);
+    station.add(kibo);
+    // Kibo exposed pallet + its own small solar wing
+    const pallet = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.004, 0.014), gold);
+    pallet.position.set(-0.027, 0.008, -0.076);
+    station.add(pallet);
+    const kiboPanel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.0014, 0.026), panelBlue);
+    kiboPanel.position.set(-0.056, 0.012, -0.048);
+    station.add(kiboPanel);
+
+    // --- cupola under Harmony: faceted dome with dark window band
+    const cupola = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.01, 7), white);
+    cupola.position.set(0.008, -0.026, -0.048);
+    station.add(cupola);
+    const cupolaTop = new THREE.Mesh(new THREE.SphereGeometry(0.011, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), dark);
+    cupolaTop.rotation.x = Math.PI;
+    cupolaTop.position.set(0.008, -0.031, -0.048);
+    station.add(cupolaTop);
+
+    // --- Canadarm2: two-segment white arm off Destiny
+    strut(V(0.006, -0.016, -0.01), V(0.05, -0.048, 0.045), 0.004, white);
+    strut(V(0.05, -0.048, 0.045), V(0.088, -0.04, 0.09), 0.0032, white);
+    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.012), white);
+    wrist.position.set(0.09, -0.04, 0.094);
+    station.add(wrist);
+
+    // --- docked crew capsule at Zvezda aft port (sphere + cone + twin panels)
+    const capsule = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 8), gold);
+    capsule.position.set(0, -0.004, 0.172);
+    station.add(capsule);
+    const capsuleTop = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.004, 0.024, 8), alu);
+    capsuleTop.rotation.x = Math.PI / 2;
+    capsuleTop.position.set(0, -0.004, 0.188);
+    station.add(capsuleTop);
+    for (const sz of [-1, 1]) {
+      const cp = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.0012, 0.014), panelBlue);
+      cp.position.set(sz * 0.022, -0.004, 0.2);
+      station.add(cp);
+    }
+
     body.add(station);
-    this.pickMeshes.push(core); // click target
+    this.pickMeshes.push(core); // click target (Destiny)
 
     // orbit ring (local, inclined 51.6°) — radius is updated live (planetScale-safe)
     const ringPts: THREE.Vector3[] = [];
