@@ -9,8 +9,7 @@ import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
-  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R,
-} from './data';
+  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
 import type { TextureSet } from './textures';
@@ -362,6 +361,7 @@ export class SolarEngine {
     // the Moon — real period & inclination, phases anchored to a true new moon
     this.buildMoon();
     this.buildIss();
+    this.buildOrbiter();
 
     // Halley's comet — stylized elliptical orbit, particle tail, fading trail
     this.buildHalley();
@@ -607,6 +607,74 @@ export class SolarEngine {
 
     const label = this.makeLabel(spec);
     const node: PlanetNode = { spec, pivot, mesh: core, body, angle: 0, period: 0, label, orbitRing: ring };
+    this.planets.push(node);
+  }
+
+  // Lunar orbiter — LRO-style mini satellite on a real-time polar showcase orbit.
+  // Teaching point: the Moon can barely keep satellites (Earth tides + mascons),
+  // so this little craft needs constant station-keeping — and it nests inside the
+  // Hill-sphere cage when that layer is on.
+  private buildOrbiter() {
+    const spec = ORBITER_SPEC;
+    const pivot = new THREE.Group();
+    this.scene.add(pivot);
+    const body = new THREE.Group();
+    pivot.add(body);
+
+    const craft = new THREE.Group();
+    const alu = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.45, metalness: 0.8 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xe6e9ec, roughness: 0.55, metalness: 0.35 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a520, roughness: 0.4, metalness: 0.85, emissive: 0x201604 });
+    const panelBlue = new THREE.MeshStandardMaterial({ color: 0x22477e, roughness: 0.35, metalness: 0.5, emissive: 0x0a1830, emissiveIntensity: 0.7 });
+
+    // bus (MLI-wrapped) — pick target
+    const bus = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.024, 0.024), gold);
+    bus.userData.planetId = spec.id;
+    craft.add(bus);
+    // instrument deck
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.012, 0.03), alu);
+    deck.position.set(0.02, 0, 0);
+    craft.add(deck);
+    // twin solar panels with yokes
+    for (const sz of [-1, 1]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.0012, 0.046), panelBlue);
+      panel.position.set(0, 0, sz * 0.037);
+      craft.add(panel);
+      const yoke = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.004, 0.014), alu);
+      yoke.position.set(0, 0, sz * 0.012);
+      craft.add(yoke);
+    }
+    // high-gain dish on a mast (lathe paraboloid, opens upward)
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 8; i++) { const r = (i / 8) * 0.016; pts.push(new THREE.Vector2(r, r * r * 28)); }
+    const dish = new THREE.Mesh(new THREE.LatheGeometry(pts, 16), white);
+    dish.position.set(-0.012, 0.022, 0);
+    craft.add(dish);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.0016, 0.0016, 0.012, 6), alu);
+    mast.position.set(-0.012, 0.014, 0);
+    craft.add(mast);
+    // omni antenna whip
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0008, 0.03, 5), alu);
+    ant.position.set(0.008, 0.024, -0.008);
+    craft.add(ant);
+
+    body.add(craft);
+    this.pickMeshes.push(bus);
+
+    // polar orbit ring — unit circle in the vertical X-Y plane, scaled live
+    const ringPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(Math.cos(t), Math.sin(t), 0));
+    }
+    const ring = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(ringPts),
+      new THREE.LineBasicMaterial({ color: 0xd8c9a0, transparent: true, opacity: 0.35 }),
+    );
+    pivot.add(ring);
+
+    const label = this.makeLabel(spec);
+    const node: PlanetNode = { spec, pivot, mesh: bus, body, angle: 0, period: 0, label, orbitRing: ring };
     this.planets.push(node);
   }
 
@@ -2427,6 +2495,18 @@ export class SolarEngine {
             const want = this.focus === p && !onMoonSurface ? 0.65 : 0;
             hm.uniforms.uStrength.value += (want - hm.uniforms.uStrength.value) * Math.min(1, dt * 3);
           }
+        }
+      } else if (p.spec.id === 'orbiter') {
+        // pivot glued to the Moon; real-time polar showcase orbit (not sim-clock)
+        const moon = this.moonNode;
+        if (moon) {
+          moon.body.getWorldPosition(p.pivot.position);
+          const R = Math.max(moon.spec.radius * this.params.planetScale + 0.05, 0.31);
+          const A = this.pulseT * ((Math.PI * 2) / 12); // ~12 s per revolution
+          p.body.position.set(Math.cos(A) * R, Math.sin(A) * R, 0);
+          const hide = !!this.surface && (this.surface.node === moon || this.surface.node === p);
+          p.body.visible = !hide;
+          if (p.orbitRing) { p.orbitRing.visible = !hide; p.orbitRing.scale.setScalar(R); }
         }
       } else if (p.spec.id === 'iss') {
         const earth = this.planets.find(pl => pl.spec.id === 'earth');

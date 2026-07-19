@@ -208,6 +208,14 @@ export const ISS_SPEC: PlanetSpec = {
 };
 export const ISS_SCENE_R = 1.7;
 
+export const ORBITER_SPEC: PlanetSpec = {
+  id: 'orbiter', name: 'LUNAR ORBITER', cn: '月球轨道器',
+  radius: 0.05, distance: 0.35, inclination: 90, tiltDeg: 0, spin: 0,
+  tex: 'mercury', color: '#d8c9a0',
+  fact: 'POLAR MAPPING ORBIT · REAL-TIME SHOWCASE · LRO-CLASS',
+  factCn: '极地测绘轨道 · 真实时间展示 · LRO 级',
+};
+
 export const MOON_PERIOD_DAYS = 27.3217;
 export const MOON_SCENE_R = 2.1;
 export const NEW_MOON_JD = 2440587.5 + Date.UTC(2026, 6, 14, 17, 44) / 86400000;
@@ -263,6 +271,18 @@ export const DOSSIER: Record<string, Dossier> = {
       { k: 'INCLINATION', kCn: '轨道倾角', v: '51.6°', vCn: '51.6°' },
       { k: 'SPAN', kCn: '翼展', v: '109 M', vCn: '109 米' },
       { k: 'CREW SINCE', kCn: '常驻始于', v: '2000-11', vCn: '2000 年 11 月' },
+    ],
+  },
+  orbiter: {
+    type: 'LUNAR ORBITER', typeCn: '月球轨道器', diameterKm: 0.008,
+    blurb: 'The Moon can barely keep a satellite of its own — Earth tides and lumpy lunar gravity (mascons) destabilize most low orbits within years. Human orbiters survive only with regular station-keeping. Display orbit runs in real time.',
+    blurbCn: '月球很难留住自己的卫星——地球潮汐与月球质量瘤（重力异常区）会让多数低轨在几年内失稳坠毁，人造轨道器必须靠定期轨道维持才能长期工作。展示轨道按真实时间运行，与模拟时钟无关。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道类型', v: 'POLAR · ~50 KM ALT', vCn: '极地轨道 · 约 50 千米高度' },
+      { k: 'PERIOD', kCn: '绕月周期', v: '~113 MIN', vCn: '约 113 分钟' },
+      { k: 'INCLINATION', kCn: '轨道倾角', v: '90°', vCn: '90°' },
+      { k: 'STABILITY', kCn: '轨道稳定性', v: 'NEEDS STATION-KEEPING', vCn: '需定期轨道维持' },
+      { k: 'PROTOTYPE', kCn: '原型', v: 'LRO · 2009', vCn: '月球勘测轨道飞行器 · 2009' },
     ],
   },
   moon: {
