@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
+  MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD,
 } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
@@ -27,6 +28,7 @@ export interface HudSnapshot {
   labels: boolean;
   sound: boolean;
   ephemeris: boolean;
+  expert: boolean;
   shotName: string;
   focusId: string;
   focusName: string;
@@ -34,6 +36,8 @@ export interface HudSnapshot {
   viewName: string;
   params: { speed: number; orbitOpacity: number; planetScale: number; starfield: number };
 }
+
+export interface LogEntry { date: string; text: string }
 
 export type ProbePhase = 'aim' | 'flying' | 'success' | 'fail';
 export type ProbeMission = 'flyby' | 'impact' | 'captured';
@@ -115,7 +119,7 @@ export class SolarEngine {
   private stars!: THREE.Points;
   private belt!: THREE.Group;
   private sun!: THREE.Mesh;
-  private moon?: { pivot: THREE.Group; mesh: THREE.Mesh };
+  private moonNode: PlanetNode | null = null;
   private earthNode?: PlanetNode;
   private ephemOn = false;
   private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[]; tailMat: THREE.ShaderMaterial; coma: THREE.Sprite };
@@ -147,6 +151,11 @@ export class SolarEngine {
   private eventCache: { fromDay: number; events: AstroEvent[] } | null = null;
   private halleyLastDay = 0;
   private probeFollow = false;
+  private focusSettle = false;  // only true during the initial focus approach
+  private probeSettle = false;
+  private expert = false;
+  private eventLog: Array<{ jd: number; text: string }> = [];
+  private lastEventJd: number | null = null;
   private probe: {
     phase: ProbePhase;
     outcome: string;
@@ -214,11 +223,14 @@ export class SolarEngine {
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
-    this.controls.minDistance = 3;
+    this.controls.minDistance = 1.2;
     this.controls.maxDistance = 500;
     this.controls.addEventListener('start', () => {
       this.tween = null;
       if (this.cine) this.setCine(false);
+      // user grabbed the camera — stop enforcing distances, they own it now
+      this.focusSettle = false;
+      this.probeSettle = false;
     });
 
     // load real maps first; procedural painters fill any gaps
@@ -280,31 +292,58 @@ export class SolarEngine {
       const node = this.makePlanet(spec);
       this.planets.push(node);
       if (spec.id === 'earth') this.earthNode = node;
+      void this.earthNode; // reserved for surface-view batch
     }
 
     // asteroid belt between Mars (30) and Jupiter (43)
     this.belt = this.makeBelt(2400, 33.8, 39.0);
     this.scene.add(this.belt);
 
-    // moon
-    if (this.earthNode) {
-      const pivot = new THREE.Group();
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.27, 24, 18),
-        new THREE.MeshStandardMaterial({ map: this.tex.moon ?? planetTexture('mercury'), roughness: 1 }),
-      );
-      mesh.position.set(2.1, 0, 0);
-      pivot.add(mesh);
-      pivot.rotation.x = 5.1 * DEG;
-      this.earthNode.body.add(pivot);
-      this.moon = { pivot, mesh };
-    }
+    // the Moon — real period & inclination, phases anchored to a true new moon
+    this.buildMoon();
 
     // Halley's comet — stylized elliptical orbit, particle tail, fading trail
     this.buildHalley();
 
     // Voyager 1 & 2 — escaping the system
     for (const v of VOYAGERS) this.buildVoyager(v);
+  }
+
+  private buildMoon() {
+    const spec = MOON_SPEC;
+    const pivot = new THREE.Group();
+    this.scene.add(pivot);
+    const body = new THREE.Group();
+    pivot.add(body);
+
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(spec.radius, 24, 18),
+      new THREE.MeshStandardMaterial({ map: this.tex.moon ?? planetTexture('mercury'), roughness: 1 }),
+    );
+    mesh.userData.planetId = spec.id;
+    body.add(mesh);
+    this.pickMeshes.push(mesh);
+
+    // lunar orbit ring, tilted 5.14° about the pivot's local x-axis
+    const ringPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(
+        Math.cos(t) * MOON_SCENE_R,
+        Math.sin(t) * Math.sin(spec.inclination * DEG) * MOON_SCENE_R,
+        Math.sin(t) * Math.cos(spec.inclination * DEG) * MOON_SCENE_R,
+      ));
+    }
+    const ring = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(ringPts),
+      new THREE.LineBasicMaterial({ color: 0x8a94a8, transparent: true, opacity: 0.35 }),
+    );
+    pivot.add(ring);
+
+    const label = this.makeLabel(spec);
+    const node: PlanetNode = { spec, pivot, mesh, body, angle: 0, period: 0, label };
+    this.planets.push(node);
+    this.moonNode = node;
   }
 
   private makeLabel(spec: PlanetSpec): HTMLElement {
@@ -910,6 +949,7 @@ export class SolarEngine {
     this.probeFollow = false;
     this.focus = node;
     this.tween = null;
+    this.focusSettle = true;
     this.toast(STR[this.lang].toast.acquiring + this.planetName(node));
     this.emitSnapshot();
   }
@@ -963,6 +1003,7 @@ export class SolarEngine {
   jumpToDate(d: Date) {
     this.simDays = (d.getTime() - BASE_DATE) / 86400000;
     this.eventCache = null;
+    this.lastEventJd = null;
     this.resetHalleyTrail();
     this.emitSnapshot();
   }
@@ -971,6 +1012,7 @@ export class SolarEngine {
   scrubToDay(day: number) {
     this.simDays = day;
     this.eventCache = null;
+    this.lastEventJd = null;
     this.resetHalleyTrail();
     this.emitSnapshot();
   }
@@ -1002,6 +1044,56 @@ export class SolarEngine {
   // Prediction game — solve the real date of the chosen event from *now*.
   solvePrediction(type: EventType, a: string, b: string): number | null {
     return solveEvent(type, a, b, BASE_JD + this.simDays);
+  }
+
+  // ------------------------------------------------------------- expert mode & event log
+  onLog: ((entries: LogEntry[]) => void) | null = null;
+
+  setExpert(on: boolean) {
+    this.expert = on;
+    this.emitSnapshot();
+  }
+
+  private eventDesc(ev: AstroEvent): string {
+    const t = STR[this.lang];
+    const name = (id: string) => {
+      if (id === 'sun') return t.sun;
+      const node = this.planets.find(p => p.spec.id === id);
+      return node ? this.planetName(node) : id;
+    };
+    const tpl = ev.type === 'opposition' ? t.evOpposition
+      : ev.type === 'conjunction' ? t.evConjunction : t.evPerihelion;
+    return tpl.replace('{a}', name(ev.a)).replace('{b}', name(ev.b));
+  }
+
+  private fmtJdShort(jd: number): string {
+    const d = new Date((jd - 2440587.5) * 86400000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  private pushLog(jd: number, text: string) {
+    this.eventLog.push({ jd, text });
+    if (this.eventLog.length > 60) this.eventLog.shift();
+    this.emitLog();
+  }
+
+  private emitLog() {
+    if (!this.onLog) return;
+    const out = this.eventLog.slice(-30).reverse()
+      .map(e => ({ date: this.fmtJdShort(e.jd), text: e.text }));
+    this.onLog(out);
+  }
+
+  // watch for sky events crossed by the simulation clock
+  private watchEvents(jd: number) {
+    if (this.lastEventJd === null) { this.lastEventJd = jd; return; }
+    if (jd - this.lastEventJd > 0.5) {
+      const crossed = listUpcoming(this.lastEventJd + 0.001, 40).filter(e => e.jd <= jd);
+      for (const e of crossed) this.pushLog(e.jd, this.eventDesc(e));
+      this.lastEventJd = jd;
+    } else if (jd < this.lastEventJd - 0.5) {
+      this.lastEventJd = jd; // clock rewound — resync silently
+    }
   }
 
   // ------------------------------------------------------------- probe mode
@@ -1130,6 +1222,7 @@ export class SolarEngine {
       this.setCine(false);
       this.focus = null; // probe cam takes over from planet focus
       this.tween = null;
+      this.probeSettle = true;
       this.toast(STR[this.lang].toast.probeFollowOn);
     } else {
       this.toast(STR[this.lang].toast.probeFollowOff);
@@ -1144,12 +1237,16 @@ export class SolarEngine {
     this.controls.target.lerp(world, 1 - Math.exp(-dt * 6));
     const delta = this.controls.target.clone().sub(prevTarget);
     this.camera.position.add(delta);
-    // hold a comfortable chase distance
-    const desired = 4.2;
-    const offset = this.camera.position.clone().sub(this.controls.target);
-    const d = offset.length();
-    offset.setLength(THREE.MathUtils.lerp(d, desired, 1 - Math.exp(-dt * 1.2)));
-    this.camera.position.copy(this.controls.target).add(offset);
+    // ease to chase distance only until the user takes over
+    if (this.probeSettle) {
+      const desired = 4.2;
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const d = offset.length();
+      const newD = THREE.MathUtils.lerp(d, desired, 1 - Math.exp(-dt * 1.2));
+      offset.setLength(newD);
+      this.camera.position.copy(this.controls.target).add(offset);
+      if (Math.abs(newD - desired) < 0.05) this.probeSettle = false;
+    }
   }
 
   enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
@@ -1347,6 +1444,8 @@ export class SolarEngine {
     // chase the probe from ignition
     this.focus = null;
     this.probeFollow = true;
+    this.probeSettle = true;
+    this.pushLog(s0.jd, STR[this.lang].toast.probeLaunched + pr.aimKms.toFixed(1) + ' km/s');
     this.toast(STR[this.lang].toast.probeLaunched + pr.aimKms.toFixed(1) + ' km/s');
   }
 
@@ -1448,7 +1547,9 @@ export class SolarEngine {
     }
     const key = success ? ('out_' + outcome) : 'out_fail';
     const t = STR[this.lang].toast as unknown as Record<string, string>;
-    this.toast((success ? t[key] : t.out_fail) ?? outcome);
+    const msg = (success ? t[key] : t.out_fail) ?? outcome;
+    this.pushLog(pr.s.jd, msg);
+    this.toast(msg);
   }
 
   private hillRadius(id: string): number {
@@ -1564,6 +1665,7 @@ export class SolarEngine {
       labels: this.labelsOn,
       sound: this.ambience.isOn,
       ephemeris: this.ephemOn,
+      expert: this.expert,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
       focusId: this.focus?.spec.id ?? 'sun',
       focusName: this.focus ? this.planetName(this.focus) : STR[this.lang].sun,
@@ -1608,8 +1710,25 @@ export class SolarEngine {
 
     // orbital mechanics
     const jd = BASE_JD + this.simDays;
+    this.watchEvents(jd);
     for (const p of this.planets) {
-      if (p.spec.id === 'halley') {
+      if (p.spec.id === 'moon') {
+        // lunar position: earth pos + offset rotating with the sun-earth line
+        const earth = this.planets.find(pl => pl.spec.id === 'earth');
+        if (earth && this.moonNode) {
+          const epos = earth.body.position;
+          const A = (Math.PI * 2 * (jd - NEW_MOON_JD)) / MOON_PERIOD_DAYS;
+          const I = p.spec.inclination * DEG;
+          p.pivot.position.copy(epos);
+          p.pivot.rotation.y = -Math.atan2(epos.z, epos.x);
+          p.body.position.set(
+            -Math.cos(A) * MOON_SCENE_R,
+            Math.sin(A) * Math.sin(I) * MOON_SCENE_R,
+            Math.sin(A) * Math.cos(I) * MOON_SCENE_R,
+          );
+          p.mesh.rotation.y = -A; // tidally locked
+        }
+      } else if (p.spec.id === 'halley') {
         const pos = halleyScenePos(this.simDays);
         p.body.position.set(pos.x, pos.y, pos.z);
         this.updateCometTail(p.body.position);
@@ -1652,7 +1771,6 @@ export class SolarEngine {
         this.belt.scale.setScalar(s);
       }
     }
-    if (this.moon) this.moon.pivot.rotation.y += simDt * (Math.PI * 2 / (0.074 * 24));
     if (this.earthClouds) this.earthClouds.rotation.y += simDt * 1.25 * 0.9;
 
     // solar corona breathing
@@ -1818,14 +1936,18 @@ export class SolarEngine {
     const delta = this.controls.target.clone().sub(prevTarget);
     this.camera.position.add(delta);
 
-    // keep a sane viewing distance
-    const desired = node.spec.radius * this.params.planetScale * 6 + 1.2;
-    const offset = this.camera.position.clone().sub(this.controls.target);
-    const d = offset.length();
-    const newD = THREE.MathUtils.lerp(d, desired, 1 - Math.exp(-dt * 1.5));
-    offset.setLength(newD);
-    this.focusOffset.copy(offset);
-    this.camera.position.copy(this.controls.target).add(offset);
+    // only ease to the framing distance during the initial approach —
+    // after that (or as soon as the user grabs the camera) they own the zoom
+    if (this.focusSettle) {
+      const desired = node.spec.radius * this.params.planetScale * 6 + 1.2;
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const d = offset.length();
+      const newD = THREE.MathUtils.lerp(d, desired, 1 - Math.exp(-dt * 1.5));
+      offset.setLength(newD);
+      this.focusOffset.copy(offset);
+      this.camera.position.copy(this.controls.target).add(offset);
+      if (Math.abs(newD - desired) < 0.05) this.focusSettle = false;
+    }
   }
 
   private updateLabels() {

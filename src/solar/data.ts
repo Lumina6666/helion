@@ -165,6 +165,27 @@ export const VOYAGER_SPECS: PlanetSpec[] = [
   },
 ];
 
+// ------------------------------------------------------------ the Moon
+// Lunar constants — real sidereal period & inclination; phases anchor to the
+// new moon of 2026-07-14 17:44 UTC.
+export const MOON_SPEC: PlanetSpec = {
+  id: 'moon', name: 'MOON', cn: '月球',
+  radius: 0.27, distance: 2.1, inclination: 5.14, tiltDeg: 6.68, spin: 0,
+  tex: 'mercury', color: '#a8b2c0',
+  fact: 'TIDALLY LOCKED · ORBITS EARTH EVERY 27.3 DAYS',
+  factCn: '潮汐锁定 · 每 27.3 天绕地球一圈',
+};
+export const MOON_PERIOD_DAYS = 27.3217;
+export const MOON_SCENE_R = 2.1;
+export const NEW_MOON_JD = 2440587.5 + Date.UTC(2026, 6, 14, 17, 44) / 86400000;
+
+// heliocentric distances (AU) for the true-scale HUD readout
+export const DIST_AU: Record<string, number> = {
+  mercury: 0.387, venus: 0.723, earth: 1.0, mars: 1.524,
+  jupiter: 5.203, saturn: 9.583, uranus: 19.19, neptune: 30.07,
+  pluto: 39.48, moon: 1.0, halley: 17.8,
+};
+
 // ------------------------------------------------------------ dossier data
 export interface DossierRow { k: string; kCn: string; v: string; vCn: string }
 export interface Dossier {
@@ -175,6 +196,18 @@ export interface Dossier {
 }
 
 export const DOSSIER: Record<string, Dossier> = {
+  moon: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 3475,
+    blurb: 'Tidally locked to Earth — the same face always looks at us. Its phases come from sunlight geometry, not shadows of Earth.',
+    blurbCn: '被地球潮汐锁定——永远以同一面朝向地球。月相来自阳光照射的几何关系，而非地球的影子。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.0123 M⊕', vCn: '0.0123 地球质量' },
+      { k: 'ORBIT', kCn: '绕地周期', v: '27.3 DAYS', vCn: '27.3 天' },
+      { k: 'DISTANCE', kCn: '距地球', v: '384,400 KM', vCn: '38.4 万千米' },
+      { k: 'INCLINATION', kCn: '轨道倾角', v: '5.14°', vCn: '5.14°' },
+      { k: 'SURFACE TEMP', kCn: '表面温度', v: '−173 ~ 127 °C', vCn: '−173 ~ 127 °C' },
+    ],
+  },
   mercury: {
     type: 'ROCKY PLANET', typeCn: '岩质行星', diameterKm: 4879,
     blurb: 'The swift planet — a year lasts 88 days, but a single solar day lasts 176 Earth days.',

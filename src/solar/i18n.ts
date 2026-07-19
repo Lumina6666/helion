@@ -85,6 +85,12 @@ export interface Strings {
   resetProbe: string;
   exitProbe: string;
   followProbe: string;
+  expertBtn: string;
+  logTitle: string;
+  logEmpty: string;
+  scaleTitle: string;
+  scaleSunDist: string;   // {d} = scaled distance
+  scaleMoon: string;
   statusLabel: string;
   phaseAim: string;
   phaseFlying: string;
@@ -220,6 +226,12 @@ export const STR: Record<Lang, Strings> = {
     resetProbe: 'RE-ARM',
     exitProbe: 'EXIT',
     followProbe: '📡 TRACK',
+    expertBtn: '📋 EXPERT',
+    logTitle: 'EVENT LOG',
+    logEmpty: 'AWAITING EVENTS…',
+    scaleTitle: 'TRUE SCALE',
+    scaleSunDist: 'AS A 1 CM BALL — THE SUN WOULD BE {d} AWAY',
+    scaleMoon: 'AND THE MOON JUST 30 CM FROM EARTH',
     statusLabel: 'STATUS',
     phaseAim: 'AIMING',
     phaseFlying: 'IN FLIGHT',
@@ -353,6 +365,12 @@ export const STR: Record<Lang, Strings> = {
     resetProbe: '重新装填',
     exitProbe: '退出',
     followProbe: '📡 跟踪视角',
+    expertBtn: '📋 专家',
+    logTitle: '事件日志',
+    logEmpty: '等待事件发生…',
+    scaleTitle: '真实尺度',
+    scaleSunDist: '若缩小为 1 cm 小球 — 太阳在 {d} 之外',
+    scaleMoon: '而月球距地球仅 30 cm',
     statusLabel: '状态',
     phaseAim: '瞄准中',
     phaseFlying: '飞行中',

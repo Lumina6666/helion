@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SolarEngine } from './solar/engine';
-import type { HudSnapshot, Telemetry } from './solar/engine';
-import { VIEWS, DOSSIER, PLANETS } from './solar/data';
+import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
+import { VIEWS, DOSSIER, PLANETS, DIST_AU } from './solar/data';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
 import type { AstroEvent } from './solar/events';
 import { STR } from './solar/i18n';
@@ -71,6 +71,7 @@ export default function App() {
   const [scrubVal, setScrubVal] = useState(0);
   const [probeMission, setProbeMission] = useState<'flyby' | 'impact' | 'captured'>('flyby');
   const [probeTarget, setProbeTarget] = useState('mars');
+  const [log, setLog] = useState<LogEntry[]>([]);
   const probeMissionRef = useRef(probeMission);
   const probeTargetRef = useRef(probeTarget);
   probeMissionRef.current = probeMission;
@@ -94,6 +95,7 @@ export default function App() {
     engine.onSnapshot = setSnap;
     engine.onTelemetry = setTel;
     engine.onToast = showToast;
+    engine.onLog = setLog;
     engine.onFatal = (m) => setFatal(m);
     engine.onProgress = (p) => setLoadPct(Math.round(p * 100));
     engine.onReady = () => setReady(true);
@@ -309,6 +311,9 @@ export default function App() {
           <button className={`hbtn wide ${probe?.active ? 'active' : ''}`} onClick={onProbeToggle}>
             {t.probeBtn}
           </button>
+          <button className={`hbtn wide ${snap?.expert ? 'active' : ''}`} onClick={() => eng()?.setExpert(!(snap?.expert))}>
+            {t.expertBtn}
+          </button>
           <button className="hbtn wide" onClick={() => setLang(l => (l === 'zh' ? 'en' : 'zh'))}>
             {t.langButton}
           </button>
@@ -374,6 +379,18 @@ export default function App() {
           {dossier.rows.map(r => (
             <div className="d-row" key={r.k}><span>{lang === 'zh' ? r.kCn : r.k}</span><span className="p-val">{lang === 'zh' ? r.vCn : r.v}</span></div>
           ))}
+          {dossier.diameterKm != null && DIST_AU[focusId] != null && (() => {
+            // if this body were a 1 cm ball, how far would the Sun be?
+            const m = (DIST_AU[focusId] * 1.496e8) / dossier.diameterKm! / 100;
+            const d = m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m.toFixed(0)} m`;
+            return (
+              <div className="d-block">
+                <div className="d-meta"><span>{t.scaleTitle}</span></div>
+                <div className="d-scale">{t.scaleSunDist.replace('{d}', d)}</div>
+                {focusId === 'earth' && <div className="d-scale">{t.scaleMoon}</div>}
+              </div>
+            );
+          })()}
           <div className="d-blurb">{lang === 'zh' ? dossier.blurbCn : dossier.blurb}</div>
         </div>
       )}
@@ -457,6 +474,19 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {snap?.expert && (
+        <div id="eventlog" className="ctl">
+          <div className="p-head"><span className="p-title">{t.logTitle}</span></div>
+          {log.length === 0 && <div className="log-empty">{t.logEmpty}</div>}
+          {log.map((e, i) => (
+            <div className="log-row" key={`${e.date}${e.text}${i}`}>
+              <span className="log-date">{e.date}</span>
+              <span className="log-text">{e.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {probe?.active && (
         <div id="probepanel" className="ctl">
