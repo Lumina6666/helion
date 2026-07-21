@@ -42,6 +42,7 @@ export interface Strings {
   ephemOff: string;
   dossier: string;
   dossierClose: string;
+  exitImmersive: string;
   diameter: string;
   vsEarth: string;
   rangeNow: string;
@@ -215,6 +216,7 @@ export const STR: Record<Lang, Strings> = {
     ephemOff: 'OFF',
     dossier: 'DOSSIER',
     dossierClose: 'CLOSE',
+    exitImmersive: 'EXIT IMMERSIVE · H',
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
@@ -386,6 +388,7 @@ export const STR: Record<Lang, Strings> = {
     ephemOff: '关',
     dossier: '档案',
     dossierClose: '关闭',
+    exitImmersive: '退出沉浸 · H',
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',

@@ -147,6 +147,15 @@ export default function App() {
     return () => clearInterval(iv);
   }, [timeOpen]);
 
+  // immersive mode: entering hides every panel — auto-close floaters so nothing
+  // lingers over the clean view. Exit paths: corner button / H key / Escape.
+  const toggleHud = () => {
+    setHudOn(v => {
+      if (v) { setParamsOpen(false); setTimeOpen(false); } // idempotent side effects
+      return !v;
+    });
+  };
+
   // keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -168,7 +177,7 @@ export default function App() {
         case 'l': eng.toggleLabels(); break;
         case 'p': setParamsOpen(v => !v); break;
         case 'm': eng.toggleSound(); break;
-        case 'h': setHudOn(v => !v); break;
+        case 'h': toggleHud(); break;
         case 'e': eng.toggleEphemeris(); break;
         case 'd': setDossierOpen(v => !v); break;
         case 't': setTimeOpen(v => !v); break;
@@ -184,7 +193,7 @@ export default function App() {
           else eng.enterSurfaceView();
           break;
         }
-        case 'escape': eng.exitSurfaceView(); eng.clearFocus(); break;
+        case 'escape': eng.exitSurfaceView(); eng.clearFocus(); setHudOn(true); break;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -302,7 +311,7 @@ export default function App() {
             <button className={`hbtn ${snap?.orbit ? 'active' : ''}`} onClick={() => eng()?.toggleOrbit()}>{t.orbit}</button>
             <button className={`hbtn ${snap?.labels ? 'active' : ''}`} onClick={() => eng()?.toggleLabels()}>{t.labels}</button>
             <button className={`hbtn ${paramsOpen ? 'active' : ''}`} onClick={() => setParamsOpen(v => !v)}>{t.params}</button>
-            <button className={`hbtn ${hudOn ? 'active' : ''}`} onClick={() => setHudOn(v => !v)}>{t.hud}</button>
+            <button className={`hbtn ${hudOn ? 'active' : ''}`} onClick={toggleHud}>{t.hud}</button>
           </div>
           <button className={`hbtn wide ${snap?.sound ? 'active' : ''}`} onClick={() => eng()?.toggleSound()}>
             {snap?.sound ? t.soundOn : t.soundOff}
@@ -330,10 +339,15 @@ export default function App() {
         </div>
       </div>
 
-      <div id="params" className={paramsOpen ? 'ctl' : 'ctl hidden'}>
+      {!hudOn && (
+        <button id="btn-exit-immersive" onClick={toggleHud}>{t.exitImmersive}</button>
+      )}
+
+      <div id="params" className={paramsOpen && hudOn ? 'ctl' : 'ctl hidden'}>
         <div className="p-head">
           <span className="p-title">{t.parameters}</span>
           <button id="btn-reset" className="hbtn" onClick={() => eng()?.resetParams()}>{t.reset}</button>
+          <button id="btn-params-close" className="hbtn" onClick={() => setParamsOpen(false)}>{t.dossierClose}</button>
         </div>
         <div className="p-row">
           <div className="p-meta"><span>{t.timeFlow}</span><span className="p-val">×{p.speed.toFixed(2)}</span></div>
@@ -410,7 +424,7 @@ export default function App() {
         </div>
       )}
 
-      <div id="timepanel" className={timeOpen ? 'ctl' : 'ctl hidden'}>
+      <div id="timepanel" className={timeOpen && hudOn ? 'ctl' : 'ctl hidden'}>
         <div className="p-head">
           <span className="p-title">{t.timePanel}</span>
           <button className="hbtn" id="btn-reset" onClick={() => setTimeOpen(false)}>{t.dossierClose}</button>
