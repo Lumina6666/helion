@@ -42,6 +42,7 @@ export interface HudSnapshot {
   globeGrid: boolean;
   globeFill: boolean;
   globeLabels: boolean;
+  globeSpin: boolean;
   experiment: boolean;
   bloom: boolean;
   shotName: string;
@@ -154,6 +155,7 @@ export class SolarEngine {
   private globeGridOn = true;
   private globeFillOn = false;
   private globeLabelsOn = true;
+  private globeSpinOn = true;   // spin preserved in globe view; user can freeze it
   private globeMarkers: THREE.Mesh[] = [];
   private lmLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; lm: Landmark }> = [];
   private dimmed: Array<{ m: THREE.Material; transparent: boolean; opacity: number }> = [];
@@ -1726,6 +1728,11 @@ export class SolarEngine {
     this.emitSnapshot();
   }
 
+  toggleGlobeSpin() {
+    this.globeSpinOn = !this.globeSpinOn;
+    this.emitSnapshot();
+  }
+
   private buildGlobeLayers(node: PlanetNode) {
     const r = node.spec.radius;
     // 1) graticule — surface-fixed, spins with the body
@@ -2697,6 +2704,7 @@ export class SolarEngine {
       globeGrid: this.globeGridOn,
       globeFill: this.globeFillOn,
       globeLabels: this.globeLabelsOn,
+      globeSpin: this.globeSpinOn,
       experiment: this.experiment !== null,
       bloom: this.bloomOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
@@ -2829,8 +2837,10 @@ export class SolarEngine {
     }
     if (this.globe) {
       const g = this.globe.node;
-      if (g.spec.id === 'moon') g.mesh.rotation.y -= dt * ((Math.PI * 2) / MOON_PERIOD_DAYS) * DAYS_PER_SECOND;
-      else g.mesh.rotation.y += dt * g.spec.spin * 0.9;
+      if (this.globeSpinOn) {
+        if (g.spec.id === 'moon') g.mesh.rotation.y -= dt * ((Math.PI * 2) / MOON_PERIOD_DAYS) * DAYS_PER_SECOND;
+        else g.mesh.rotation.y += dt * g.spec.spin * 0.9;
+      }
       if (this.globeTerm && this.globeFillOn) {
         const wp = g.body.getWorldPosition(new THREE.Vector3());
         ((this.globeTerm.material as THREE.ShaderMaterial).uniforms.uSunDir.value as THREE.Vector3).copy(wp).negate().normalize();

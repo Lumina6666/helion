@@ -343,6 +343,7 @@ export default function App() {
         <div id="globebar" className="ctl">
           <span className="gb-title">◉ {t.globeTitle} · {snap.focusName}</span>
           <button className="hbtn" onClick={() => eng()?.resetGlobeView()}>{t.globeReset}</button>
+          <button className={`hbtn ${snap.globeSpin ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeSpin()}>{t.globeSpin}</button>
           <button className={`hbtn ${snap.globeGrid ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeGrid()}>{t.globeGrid}</button>
           <button className={`hbtn ${snap.globeFill ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeFill()}>{t.globeFill}</button>
           <button className={`hbtn ${snap.globeLabels ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeLabels()}>{t.globeLabels}</button>

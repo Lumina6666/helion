@@ -50,6 +50,7 @@ export interface Strings {
   globeFill: string;
   globeLabels: string;
   globeExit: string;
+  globeSpin: string;
   diameter: string;
   vsEarth: string;
   rangeNow: string;
@@ -236,6 +237,7 @@ export const STR: Record<Lang, Strings> = {
     globeFill: 'FILL LIGHT',
     globeLabels: 'LANDMARKS',
     globeExit: 'EXIT GLOBE VIEW',
+    globeSpin: 'SPIN',
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
@@ -420,6 +422,7 @@ export const STR: Record<Lang, Strings> = {
     globeFill: '暗面补光',
     globeLabels: '地标标注',
     globeExit: '退出球体视图',
+    globeSpin: '自转',
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',
