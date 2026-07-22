@@ -43,6 +43,13 @@ export interface Strings {
   dossier: string;
   dossierClose: string;
   exitImmersive: string;
+  globeBtn: string;
+  globeTitle: string;
+  globeReset: string;
+  globeGrid: string;
+  globeFill: string;
+  globeLabels: string;
+  globeExit: string;
   diameter: string;
   vsEarth: string;
   rangeNow: string;
@@ -154,6 +161,11 @@ export interface Strings {
     wellOff: string;
     hillOn: string;
     hillOff: string;
+    globeOn: string;
+    globeOff: string;
+    globeNoBody: string;
+    globeNoExp: string;
+    globeNoProbe: string;
     lagrangeOn: string;
     lagrangeOff: string;
     expInjected: string;
@@ -217,6 +229,13 @@ export const STR: Record<Lang, Strings> = {
     dossier: 'DOSSIER',
     dossierClose: 'CLOSE',
     exitImmersive: 'EXIT IMMERSIVE · H',
+    globeBtn: '◉ GLOBE VIEW',
+    globeTitle: 'GLOBE VIEW',
+    globeReset: 'RESET VIEW',
+    globeGrid: 'GRATICULE',
+    globeFill: 'FILL LIGHT',
+    globeLabels: 'LANDMARKS',
+    globeExit: 'EXIT GLOBE VIEW',
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
@@ -328,6 +347,11 @@ export const STR: Record<Lang, Strings> = {
       wellOff: 'GRAVITY WELL OVERLAY OFF',
       hillOn: 'MOON HILL SPHERE ON',
       hillOff: 'MOON HILL SPHERE OFF',
+      globeOn: 'GLOBE VIEW — SIM TIME FROZEN',
+      globeOff: 'GLOBE VIEW OFF — TIME RESUMED',
+      globeNoBody: 'GLOBE VIEW NOT AVAILABLE FOR THIS TARGET',
+      globeNoExp: 'N-BODY EXPERIMENT RUNNING — GLOBE VIEW BLOCKED',
+      globeNoProbe: 'GLOBE VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
       lagrangeOn: 'LAGRANGE POINTS ON',
       lagrangeOff: 'LAGRANGE POINTS OFF',
       expInjected: 'ROGUE OBJECT INJECTED — N-BODY MODE',
@@ -389,6 +413,13 @@ export const STR: Record<Lang, Strings> = {
     dossier: '档案',
     dossierClose: '关闭',
     exitImmersive: '退出沉浸 · H',
+    globeBtn: '◉ 球体视图',
+    globeTitle: '球体视图',
+    globeReset: '复位视角',
+    globeGrid: '经纬网格',
+    globeFill: '暗面补光',
+    globeLabels: '地标标注',
+    globeExit: '退出球体视图',
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',
@@ -500,6 +531,11 @@ export const STR: Record<Lang, Strings> = {
       wellOff: '引力势阱叠加层已关闭',
       hillOn: '月球希尔球已开启',
       hillOff: '月球希尔球已关闭',
+      globeOn: '已进入球体视图 — 时间已冻结',
+      globeOff: '已退出球体视图，时间恢复流动',
+      globeNoBody: '该目标不支持球体视图',
+      globeNoExp: 'N 体实验进行中，无法进入球体视图',
+      globeNoProbe: '球体视图与探测器模式互斥',
       lagrangeOn: '拉格朗日点已开启',
       lagrangeOff: '拉格朗日点已关闭',
       expInjected: '流浪天体已注入 — N 体模式',

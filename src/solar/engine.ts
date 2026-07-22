@@ -9,7 +9,8 @@ import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
-  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC } from './data';
+  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS } from './data';
+import type { Landmark } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
 import type { TextureSet } from './textures';
@@ -37,6 +38,10 @@ export interface HudSnapshot {
   well: boolean;
   lagrange: boolean;
   hill: boolean;
+  globeId: string;
+  globeGrid: boolean;
+  globeFill: boolean;
+  globeLabels: boolean;
   experiment: boolean;
   bloom: boolean;
   shotName: string;
@@ -137,6 +142,22 @@ export class SolarEngine {
   private hillOn = false;
   private moonHill: THREE.Mesh | null = null;   // wireframe cage: gravitational domain
   private moonHalo: THREE.Mesh | null = null;   // fresnel shell: focus highlight
+  private sky: THREE.Mesh | null = null;
+  // globe view ("specimen mode") state
+  private globe: {
+    node: PlanetNode; sys: Set<string>;
+    savedSpeed: number; savedNear: number; savedMin: number; savedMax: number;
+  } | null = null;
+  private globeGrid: THREE.Mesh | null = null;
+  private globeTerm: THREE.Mesh | null = null;
+  private globeFillLight: THREE.HemisphereLight | null = null;
+  private globeGridOn = true;
+  private globeFillOn = false;
+  private globeLabelsOn = true;
+  private globeMarkers: THREE.Mesh[] = [];
+  private lmLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; lm: Landmark }> = [];
+  private dimmed: Array<{ m: THREE.Material; transparent: boolean; opacity: number }> = [];
+  private dimHidden: THREE.Object3D[] = [];
   private earthNode?: PlanetNode;
   private ephemOn = false;
   private halley?: { node: PlanetNode; tail: THREE.Points; trail: THREE.Line; trailPts: THREE.Vector3[]; tailMat: THREE.ShaderMaterial; coma: THREE.Sprite };
@@ -320,6 +341,7 @@ export class SolarEngine {
       );
       sky.renderOrder = -10;
       this.scene.add(sky);
+      this.sky = sky;
     }
 
     // starfield
@@ -1197,6 +1219,16 @@ export class SolarEngine {
         if (node) this.focusPlanet(node);
       }
     });
+    this.canvas.addEventListener('dblclick', (e) => {
+      this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const hits = this.raycaster.intersectObjects(this.pickMeshes, false);
+      if (hits.length > 0) {
+        const id = hits[0].object.userData.planetId as string;
+        const node = this.planets.find(p => p.spec.id === id);
+        if (node) this.enterGlobeView(node);
+      }
+    });
   }
 
   private onResize = () => {
@@ -1223,6 +1255,7 @@ export class SolarEngine {
     for (const p of this.planets) {
       if (p.label) p.label.textContent = lang === 'zh' ? p.spec.cn : p.spec.name;
     }
+    for (const L of this.lmLabels) L.el.textContent = lang === 'zh' ? L.lm.nameCn : L.lm.name;
     this.voyagers.forEach(r => { r.lastAu = -1; }); // force live-range refresh
     this.emitSnapshot();
   }
@@ -1352,6 +1385,7 @@ export class SolarEngine {
 
   // Jump the simulation clock to an absolute date (UTC).
   jumpToDate(d: Date) {
+    if (this.globe) this.exitGlobeView(true);
     this.simDays = (d.getTime() - BASE_DATE) / 86400000;
     if (this.experiment) this.resetExperiment(true); // integrated state can't time-jump
     this.eventCache = null;
@@ -1362,6 +1396,7 @@ export class SolarEngine {
 
   // Scrub relative to the current sim day (timeline dragging).
   scrubToDay(day: number) {
+    if (this.globe) this.exitGlobeView(true);
     this.simDays = day;
     if (this.experiment) this.resetExperiment(true);
     this.eventCache = null;
@@ -1405,6 +1440,7 @@ export class SolarEngine {
   // stand on a planet's surface and look at the sky
   enterSurfaceView(node?: PlanetNode) {
     if (this.surface) this.exitSurfaceView(true);
+    if (this.globe) this.exitGlobeView(true);
     const target = node ?? this.focus ?? this.planets.find(p => p.spec.id === 'earth');
     if (!target) return;
     this.setCine(false);
@@ -1539,6 +1575,238 @@ export class SolarEngine {
   }
 
   // ------------------------------------------------------------- batch 3
+  // ------------------------------------------------------------- globe view
+  // "Specimen mode": isolate one body, dim the rest of the system, freeze sim
+  // time and hand the camera to the user. Layers: graticule, fill light +
+  // terminator glow, landmark markers. Sun / spacecraft / comets excluded.
+  private static GLOBEABLE = new Set([
+    'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn',
+    'uranus', 'neptune', 'pluto', 'moon', 'ceres', 'vesta',
+  ]);
+
+  enterGlobeView(node?: PlanetNode) {
+    const t = STR[this.lang];
+    const target = node ?? this.focus;
+    if (!target || !SolarEngine.GLOBEABLE.has(target.spec.id)) { this.toast(t.toast.globeNoBody); return; }
+    if (this.experiment) { this.toast(t.toast.globeNoExp); return; }
+    if (this.probe) { this.toast(t.toast.globeNoProbe); return; }
+    if (this.globe) this.exitGlobeView(true);
+    if (this.surface) this.exitSurfaceView(true);
+    this.setCine(false);
+    this.tween = null;
+
+    const sys = new Set<string>([target.spec.id]);
+    if (target.spec.id === 'earth') ['moon', 'iss', 'orbiter'].forEach(id => sys.add(id));
+    if (target.spec.id === 'moon') sys.add('orbiter');
+
+    this.globe = {
+      node: target, sys,
+      savedSpeed: this.params.speed,
+      savedNear: this.camera.near,
+      savedMin: this.controls.minDistance,
+      savedMax: this.controls.maxDistance,
+    };
+
+    // freeze sim time (spin keeps running — driven by real dt while globe is on)
+    this.setParam('speed', 0);
+
+    // dim everything outside the retained system
+    for (const p of this.planets) {
+      if (sys.has(p.spec.id)) continue;
+      p.pivot.traverse(o => {
+        const any = o as unknown as { isLine?: boolean; isPoints?: boolean; material?: THREE.Material };
+        if (!any.material) return;
+        const mat = any.material as THREE.Material;
+        if (any.isLine || any.isPoints || (mat as THREE.ShaderMaterial).isShaderMaterial) {
+          this.dimHidden.push(o); o.visible = false;
+        } else {
+          this.dimmed.push({ m: mat, transparent: mat.transparent, opacity: mat.opacity });
+          mat.transparent = true; mat.opacity = 0.08;
+        }
+      });
+    }
+    const dimMat = (m: THREE.Material) => {
+      this.dimmed.push({ m, transparent: m.transparent, opacity: m.opacity });
+      m.transparent = true; m.opacity = 0.08;
+    };
+    dimMat(this.sun.material as THREE.Material);
+    if (this.sunGlow1) dimMat(this.sunGlow1.material as THREE.Material);
+    if (this.sunGlow2) dimMat(this.sunGlow2.material as THREE.Material);
+    dimMat(this.stars.material as THREE.Material);
+    if (this.sky) dimMat(this.sky.material as THREE.Material);
+    this.dimHidden.push(this.belt); this.belt.visible = false;
+    if (this.halley) {
+      this.dimHidden.push(this.halley.tail); this.halley.tail.visible = false;
+      this.dimHidden.push(this.halley.trail); this.halley.trail.visible = false;
+    }
+    this.orbitLines.forEach(l => { this.dimHidden.push(l); l.visible = false; });
+    if (target.orbitRing) { this.dimHidden.push(target.orbitRing); target.orbitRing.visible = false; } // its path around the parent is not part of the specimen
+    if (this.well) { this.dimHidden.push(this.well); this.well.visible = false; }
+    if (this.lagrangeGroup) { this.dimHidden.push(this.lagrangeGroup); this.lagrangeGroup.visible = false; }
+
+    // camera envelope for close inspection
+    const visR = Math.max(target.spec.radius * this.params.planetScale, 0.05);
+    this.controls.minDistance = visR * 1.15;
+    this.controls.maxDistance = visR * 25;
+    this.camera.near = Math.min(0.01, visR * 0.02);
+    this.camera.updateProjectionMatrix();
+    this.focus = target;
+    this.focusSettle = true;
+
+    this.buildGlobeLayers(target);
+    this.toast(t.toast.globeOn);
+    this.emitSnapshot();
+  }
+
+  exitGlobeView(silent = false) {
+    const g = this.globe;
+    if (!g) return;
+    this.globe = null;
+    for (const d of this.dimmed) { d.m.transparent = d.transparent; d.m.opacity = d.opacity; }
+    this.dimmed = [];
+    for (const o of this.dimHidden) o.visible = true;
+    this.dimHidden = [];
+    if (this.globeGrid) {
+      this.globeGrid.removeFromParent();
+      this.globeGrid.geometry.dispose();
+      (this.globeGrid.material as THREE.Material).dispose();
+      this.globeGrid = null;
+    }
+    if (this.globeTerm) {
+      this.globeTerm.removeFromParent();
+      this.globeTerm.geometry.dispose();
+      (this.globeTerm.material as THREE.Material).dispose();
+      this.globeTerm = null;
+    }
+    for (const mk of this.globeMarkers) {
+      mk.removeFromParent();
+      mk.geometry.dispose();
+      (mk.material as THREE.Material).dispose();
+    }
+    this.globeMarkers = [];
+    for (const L of this.lmLabels) L.el.remove();
+    this.lmLabels = [];
+    if (this.globeFillLight) { this.scene.remove(this.globeFillLight); this.globeFillLight = null; }
+    this.controls.minDistance = g.savedMin;
+    this.controls.maxDistance = g.savedMax;
+    this.camera.near = g.savedNear;
+    this.camera.updateProjectionMatrix();
+    // resume time only if the user left it frozen
+    if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
+    if (!silent) this.toast(STR[this.lang].toast.globeOff);
+    this.emitSnapshot();
+  }
+
+  resetGlobeView() {
+    if (!this.globe) return;
+    const node = this.globe.node;
+    const visR = Math.max(node.spec.radius * this.params.planetScale, 0.05);
+    const world = node.body.getWorldPosition(new THREE.Vector3());
+    const off = new THREE.Vector3(1.7, 1.0, 2.1).normalize().multiplyScalar(visR * 3.2);
+    this.camera.position.copy(world).add(off);
+    this.controls.target.copy(world);
+    this.focusSettle = false;
+  }
+
+  toggleGlobeGrid() {
+    this.globeGridOn = !this.globeGridOn;
+    if (this.globeGrid) this.globeGrid.visible = this.globeGridOn;
+    this.emitSnapshot();
+  }
+
+  toggleGlobeFill() {
+    this.globeFillOn = !this.globeFillOn;
+    if (this.globeTerm) this.globeTerm.visible = this.globeFillOn;
+    if (this.globeFillLight) this.globeFillLight.visible = this.globeFillOn;
+    this.emitSnapshot();
+  }
+
+  toggleGlobeLabels() {
+    this.globeLabelsOn = !this.globeLabelsOn;
+    this.emitSnapshot();
+  }
+
+  private buildGlobeLayers(node: PlanetNode) {
+    const r = node.spec.radius;
+    // 1) graticule — surface-fixed, spins with the body
+    this.globeGrid = new THREE.Mesh(
+      new THREE.SphereGeometry(r * 1.004, 24, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0x63d8d0, wireframe: true, transparent: true, opacity: 0.1,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }),
+    );
+    this.globeGrid.visible = this.globeGridOn;
+    node.mesh.add(this.globeGrid);
+
+    // 2) terminator glow band — sun-direction shader shell (rides with fill light)
+    const termMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
+      uniforms: {
+        uSunDir: { value: new THREE.Vector3(1, 0, 0) },
+        uStrength: { value: 0.4 },
+        uColor: { value: new THREE.Color(0xffd9a0) },
+      },
+      vertexShader: 'varying vec3 vW; void main(){ vW = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 uSunDir; uniform float uStrength; uniform vec3 uColor; varying vec3 vW; void main(){ float band = pow(1.0 - abs(dot(normalize(vW), normalize(uSunDir))), 7.0); gl_FragColor = vec4(uColor, band * uStrength); }',
+    });
+    this.globeTerm = new THREE.Mesh(new THREE.SphereGeometry(r * 1.01, 48, 32), termMat);
+    this.globeTerm.visible = this.globeFillOn;
+    node.body.add(this.globeTerm);
+
+    // 3) landmark markers + clickable DOM labels
+    for (const lm of LANDMARKS[node.spec.id] ?? []) {
+      const lr = r * 1.015;
+      const theta = (90 - lm.lat) * DEG;
+      const phi = (lm.lon + 180) * DEG;
+      const pos = new THREE.Vector3(
+        -lr * Math.cos(phi) * Math.sin(theta),
+        lr * Math.cos(theta),
+        lr * Math.sin(phi) * Math.sin(theta),
+      );
+      const mk = new THREE.Mesh(
+        new THREE.RingGeometry(r * 0.04, r * 0.06, 24),
+        new THREE.MeshBasicMaterial({ color: 0x7fdcff, side: THREE.DoubleSide, transparent: true, opacity: 0.85, depthWrite: false }),
+      );
+      mk.position.copy(pos);
+      mk.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), pos.clone().normalize());
+      node.mesh.add(mk);
+      this.globeMarkers.push(mk);
+
+      const el = document.createElement('div');
+      el.className = 'p-label lm-label';
+      el.textContent = this.lang === 'zh' ? lm.nameCn : lm.name;
+      el.style.opacity = '0';
+      el.addEventListener('click', () => this.toast(this.lang === 'zh' ? lm.descCn : lm.desc));
+      this.labelLayer.appendChild(el);
+      this.lmLabels.push({ el, obj: mk, lm });
+    }
+
+    // museum fill light (independent of the shell, both ride the same toggle)
+    this.globeFillLight = new THREE.HemisphereLight(0x8fa8c8, 0x1a2028, 0.55);
+    this.globeFillLight.visible = this.globeFillOn;
+    this.scene.add(this.globeFillLight);
+  }
+
+  private updateGlobeLabels() {
+    if (!this.globe) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    const center = this.globe.node.body.getWorldPosition(new THREE.Vector3());
+    const v = new THREE.Vector3();
+    for (const L of this.lmLabels) {
+      if (!this.globeLabelsOn) { L.el.style.opacity = '0'; continue; }
+      L.obj.getWorldPosition(v);
+      const facing = v.clone().sub(center).normalize().dot(this.camera.position.clone().sub(v).normalize());
+      if (facing < 0.03) { L.el.style.opacity = '0'; continue; }
+      v.project(this.camera);
+      if (v.z > 1 || v.z < -1) { L.el.style.opacity = '0'; continue; }
+      const x = (v.x * 0.5 + 0.5) * w;
+      const y = (-v.y * 0.5 + 0.5) * h;
+      L.el.style.transform = `translate(-50%,-170%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+      L.el.style.opacity = '0.85';
+    }
+  }
+
   // Moon Hill sphere overlay — resident layer, toggled from the expert panel
   toggleHill() {
     this.hillOn = !this.hillOn;
@@ -1674,6 +1942,7 @@ export class SolarEngine {
   injectRogue() {
     if (this.experiment) return;
     if (this.probe) this.exitProbeMode();
+    if (this.globe) this.exitGlobeView(true);
     const t = STR[this.lang];
     const jd = BASE_JD + this.simDays;
     const ids = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
@@ -2003,6 +2272,7 @@ export class SolarEngine {
   enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
     if (this.probe) this.exitProbeMode();
     if (this.experiment) { this.toast(STR[this.lang].toast.expNoProbe); return; }
+    if (this.globe) { this.toast(STR[this.lang].toast.globeNoProbe); return; }
     if (this.surface) this.exitSurfaceView(true);
     if (!this.ephemOn) this.ephemOn = true; // physics needs real positions
 
@@ -2423,6 +2693,10 @@ export class SolarEngine {
       well: this.well !== null,
       lagrange: this.lagrangeGroup !== null,
       hill: this.hillOn,
+      globeId: this.globe?.node.spec.id ?? '',
+      globeGrid: this.globeGridOn,
+      globeFill: this.globeFillOn,
+      globeLabels: this.globeLabelsOn,
       experiment: this.experiment !== null,
       bloom: this.bloomOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
@@ -2489,7 +2763,7 @@ export class SolarEngine {
           p.mesh.rotation.y = -A; // tidally locked
           // shells: hill cage obeys the layer toggle; fresnel halo is a focus highlight
           const onMoonSurface = this.surface?.node === p;
-          if (this.moonHill) this.moonHill.visible = this.hillOn && !onMoonSurface;
+          if (this.moonHill) this.moonHill.visible = this.hillOn && !onMoonSurface && (!this.globe || this.globe.node.spec.id === 'earth' || this.globe.node.spec.id === 'moon');
           if (this.moonHalo) {
             const hm = this.moonHalo.material as THREE.ShaderMaterial;
             const want = this.focus === p && !onMoonSurface ? 0.65 : 0;
@@ -2552,6 +2826,16 @@ export class SolarEngine {
         p.body.position.set(Math.cos(p.angle) * p.spec.distance, 0, Math.sin(p.angle) * p.spec.distance);
       }
       p.mesh.rotation.y += simDt * p.spec.spin * 0.9;
+    }
+    if (this.globe) {
+      const g = this.globe.node;
+      if (g.spec.id === 'moon') g.mesh.rotation.y -= dt * ((Math.PI * 2) / MOON_PERIOD_DAYS) * DAYS_PER_SECOND;
+      else g.mesh.rotation.y += dt * g.spec.spin * 0.9;
+      if (this.globeTerm && this.globeFillOn) {
+        const wp = g.body.getWorldPosition(new THREE.Vector3());
+        ((this.globeTerm.material as THREE.ShaderMaterial).uniforms.uSunDir.value as THREE.Vector3).copy(wp).negate().normalize();
+      }
+      this.updateGlobeLabels();
     }
     this.updateCometTrail();
     this.updateProbe();
@@ -2767,6 +3051,7 @@ export class SolarEngine {
     const v = new THREE.Vector3();
     for (const p of this.planets) {
       const el = p.label!;
+      if (this.globe && !this.globe.sys.has(p.spec.id)) { el.style.opacity = '0'; continue; }
       p.body.getWorldPosition(v);
       const dist = v.distanceTo(this.camera.position);
       v.project(this.camera);

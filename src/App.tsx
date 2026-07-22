@@ -193,7 +193,7 @@ export default function App() {
           else eng.enterSurfaceView();
           break;
         }
-        case 'escape': eng.exitSurfaceView(); eng.clearFocus(); setHudOn(true); break;
+        case 'escape': eng.exitSurfaceView(); eng.exitGlobeView(true); eng.clearFocus(); setHudOn(true); break;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -339,6 +339,17 @@ export default function App() {
         </div>
       </div>
 
+      {snap?.globeId && hudOn && (
+        <div id="globebar" className="ctl">
+          <span className="gb-title">◉ {t.globeTitle} · {snap.focusName}</span>
+          <button className="hbtn" onClick={() => eng()?.resetGlobeView()}>{t.globeReset}</button>
+          <button className={`hbtn ${snap.globeGrid ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeGrid()}>{t.globeGrid}</button>
+          <button className={`hbtn ${snap.globeFill ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeFill()}>{t.globeFill}</button>
+          <button className={`hbtn ${snap.globeLabels ? 'active' : ''}`} onClick={() => eng()?.toggleGlobeLabels()}>{t.globeLabels}</button>
+          <button className="hbtn gb-exit" onClick={() => eng()?.exitGlobeView()}>{t.globeExit}</button>
+        </div>
+      )}
+
       {!hudOn && (
         <button id="btn-exit-immersive" onClick={toggleHud}>{t.exitImmersive}</button>
       )}
@@ -415,6 +426,12 @@ export default function App() {
             );
           })()}
           <div className="d-blurb">{lang === 'zh' ? dossier.blurbCn : dossier.blurb}</div>
+          {focusId !== 'sun' && !['iss', 'orbiter', 'halley', 'voyager1', 'voyager2'].includes(focusId) && (
+            <button className="hbtn wide" style={{ marginTop: 8 }}
+              onClick={() => eng()?.enterGlobeView()}>
+              {t.globeBtn}
+            </button>
+          )}
           {focusId !== 'sun' && (
             <button className="hbtn wide" style={{ marginTop: 8 }}
               onClick={() => eng()?.enterSurfaceView()}>

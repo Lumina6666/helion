@@ -208,6 +208,56 @@ export const ISS_SPEC: PlanetSpec = {
 };
 export const ISS_SCENE_R = 1.7;
 
+// ------------------------------------------------------------- landmarks
+// Surface-fixed markers for globe view. Lon/lat in the texture's equirectangular
+// frame (lon: -180..180 east-positive); positions are approximate.
+export interface Landmark {
+  name: string; nameCn: string;
+  lat: number; lon: number;
+  desc: string; descCn: string;
+}
+export const LANDMARKS: Record<string, Landmark[]> = {
+  mercury: [
+    { name: 'CALORIS BASIN', nameCn: '卡路里盆地', lat: 30.5, lon: -170,
+      desc: 'One of the largest impact basins in the solar system — about 1,550 km across.',
+      descCn: '太阳系最大的撞击盆地之一，直径约 1,550 千米。' },
+  ],
+  venus: [
+    { name: 'MAXWELL MONTES', nameCn: '麦克斯韦山脉', lat: 65.2, lon: 3.3,
+      desc: 'The highest peak on Venus — about 11 km above the mean radius.',
+      descCn: '金星最高峰，高出平均半径约 11 千米。' },
+  ],
+  earth: [
+    { name: 'HIMALAYAS', nameCn: '喜马拉雅山脉', lat: 28.0, lon: 84.0,
+      desc: 'The highest mountain range on Earth — Everest rises 8.85 km above sea level.',
+      descCn: '地球最高山脉——珠穆朗玛峰海拔 8.85 千米。' },
+    { name: 'MARIANA TRENCH', nameCn: '马里亚纳海沟', lat: 11.3, lon: 142.2,
+      desc: 'The deepest point in the oceans — Challenger Deep lies ~10.9 km down.',
+      descCn: '海洋最深处——挑战者深渊深约 10.9 千米。' },
+  ],
+  moon: [
+    { name: 'TRANQUILITY BASE', nameCn: '静海基地', lat: 8.5, lon: 31.4,
+      desc: 'Apollo 11 landing site — humans first set foot here in July 1969.',
+      descCn: '阿波罗 11 号登月点——1969 年 7 月人类首次踏上月球之处。' },
+    { name: 'TYCHO', nameCn: '第谷环形山', lat: -43.3, lon: -11.4,
+      desc: 'A young crater (~108 Myr) whose bright rays span thousands of km.',
+      descCn: '年轻的撞击坑（约 1.08 亿年），明亮辐射纹绵延数千千米。' },
+  ],
+  mars: [
+    { name: 'OLYMPUS MONS', nameCn: '奥林匹斯山', lat: 18.65, lon: -133.8,
+      desc: 'The tallest volcano in the solar system — about 22 km high.',
+      descCn: '太阳系最高的火山，高约 22 千米。' },
+    { name: 'VALLES MARINERIS', nameCn: '水手谷', lat: -14.0, lon: -59.0,
+      desc: 'The grand canyon of Mars — over 4,000 km long and up to 7 km deep.',
+      descCn: '火星大峡谷——长逾 4,000 千米，最深约 7 千米。' },
+  ],
+  jupiter: [
+    { name: 'GREAT RED SPOT', nameCn: '大红斑', lat: -20.0, lon: 15.0,
+      desc: 'An anticyclonic storm larger than Earth, raging for centuries. (It drifts in longitude.)',
+      descCn: '比地球还大的反气旋风暴，已持续数百年。（经度会漂移，位置为近似值）' },
+  ],
+};
+
 export const ORBITER_SPEC: PlanetSpec = {
   id: 'orbiter', name: 'LUNAR ORBITER', cn: '月球轨道器',
   radius: 0.05, distance: 0.35, inclination: 90, tiltDeg: 0, spin: 0,
