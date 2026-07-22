@@ -51,6 +51,10 @@ export interface Strings {
   globeLabels: string;
   globeExit: string;
   globeSpin: string;
+  galaxyTitle: string;
+  galaxyCap: string;
+  galaxyLabels: string;
+  galaxyExit: string;
   diameter: string;
   vsEarth: string;
   rangeNow: string;
@@ -167,6 +171,11 @@ export interface Strings {
     globeNoBody: string;
     globeNoExp: string;
     globeNoProbe: string;
+    galaxyOn: string;
+    galaxyOff: string;
+    galNoExp: string;
+    galNoProbe: string;
+    galReturning: string;
     lagrangeOn: string;
     lagrangeOff: string;
     expInjected: string;
@@ -238,6 +247,10 @@ export const STR: Record<Lang, Strings> = {
     globeLabels: 'LANDMARKS',
     globeExit: 'EXIT GLOBE VIEW',
     globeSpin: 'SPIN',
+    galaxyTitle: 'GALAXY VIEW',
+    galaxyCap: 'THE MILKY WAY · ~100,000 LIGHT-YEARS ACROSS',
+    galaxyLabels: 'LABELS',
+    galaxyExit: 'EXIT GALAXY VIEW',
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
@@ -354,6 +367,11 @@ export const STR: Record<Lang, Strings> = {
       globeNoBody: 'GLOBE VIEW NOT AVAILABLE FOR THIS TARGET',
       globeNoExp: 'N-BODY EXPERIMENT RUNNING — GLOBE VIEW BLOCKED',
       globeNoProbe: 'GLOBE VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
+      galaxyOn: 'GALAXY VIEW — SIM TIME FROZEN',
+      galaxyOff: 'BACK TO THE SOLAR SYSTEM — TIME RESUMED',
+      galNoExp: 'N-BODY EXPERIMENT BLOCKED IN GALAXY VIEW',
+      galNoProbe: 'GALAXY VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
+      galReturning: 'RETURNING TO THE SOLAR SYSTEM…',
       lagrangeOn: 'LAGRANGE POINTS ON',
       lagrangeOff: 'LAGRANGE POINTS OFF',
       expInjected: 'ROGUE OBJECT INJECTED — N-BODY MODE',
@@ -423,6 +441,10 @@ export const STR: Record<Lang, Strings> = {
     globeLabels: '地标标注',
     globeExit: '退出球体视图',
     globeSpin: '自转',
+    galaxyTitle: '银河视图',
+    galaxyCap: '银河系 · 直径约 100,000 光年',
+    galaxyLabels: '标注',
+    galaxyExit: '退出银河视图',
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',
@@ -539,6 +561,11 @@ export const STR: Record<Lang, Strings> = {
       globeNoBody: '该目标不支持球体视图',
       globeNoExp: 'N 体实验进行中，无法进入球体视图',
       globeNoProbe: '球体视图与探测器模式互斥',
+      galaxyOn: '已进入银河视图 — 时间已冻结',
+      galaxyOff: '已返回太阳系，时间恢复流动',
+      galNoExp: '银河视图中无法启动 N 体实验',
+      galNoProbe: '银河视图与探测器模式互斥',
+      galReturning: '正在返回太阳系…',
       lagrangeOn: '拉格朗日点已开启',
       lagrangeOff: '拉格朗日点已关闭',
       expInjected: '流浪天体已注入 — N 体模式',

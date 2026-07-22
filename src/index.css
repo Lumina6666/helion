@@ -924,3 +924,52 @@ body { position: fixed; inset: 0; }
 @media (max-width: 900px) {
   #globebar { bottom: 20px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 24px); }
 }
+
+/* galaxy view: caption + bottom bar (mirrors globe bar styling) */
+#galaxycap {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 16;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: rgba(220, 232, 245, 0.65);
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+#galaxybar {
+  position: fixed;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(8, 12, 18, 0.72);
+  border: 1px solid rgba(127, 220, 255, 0.22);
+  backdrop-filter: blur(8px);
+}
+#galaxybar .gb-title {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+  margin-right: 6px;
+  white-space: nowrap;
+}
+#galaxybar .hbtn { padding: 7px 10px; white-space: nowrap; }
+#galaxybar .gb-exit { border-color: rgba(255, 190, 120, 0.4); color: #ffd9a0; }
+
+/* galaxy view: marker labels */
+.p-label.gx-label { font-size: 8px; letter-spacing: 0.14em; color: rgba(220, 232, 245, 0.85); text-shadow: 0 0 8px rgba(0, 0, 0, 0.9); }
+.p-label.gx-label.clickable { pointer-events: auto; cursor: pointer; color: #9fdcff; }
+.p-label.gx-label.clickable:hover { color: #e2f6ff; }
+
+@media (max-width: 900px) {
+  #galaxybar { bottom: 20px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 24px); }
+  #galaxycap { font-size: 8.5px; width: 90vw; text-align: center; }
+}

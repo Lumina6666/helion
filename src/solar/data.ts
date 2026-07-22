@@ -128,6 +128,7 @@ export interface ViewSpec {
   distance: number;
   elevation: number; // deg above ecliptic
   azimuth: number;   // deg
+  galaxy?: boolean; // entry point: switches to the Milky Way mode instead of a camera preset
 }
 
 export const VIEWS: ViewSpec[] = [
@@ -135,6 +136,7 @@ export const VIEWS: ViewSpec[] = [
   { name: 'EDGE-ON',      nameCn: '侧视平面',  distance: 130, elevation: 2.5, azimuth: 90 },
   { name: 'POLAR',        nameCn: '极地俯视',  distance: 128, elevation: 89, azimuth: 0 },
   { name: 'INNER SYSTEM', nameCn: '内太阳系',  distance: 52,  elevation: 26, azimuth: 160 },
+  { name: '◌ MILKY WAY',   nameCn: '◌ 银河视图', distance: 0, elevation: 0, azimuth: 0, galaxy: true },
 ];
 
 export const INTRO_QUOTE = '“The cosmos is within us. We are made of star-stuff.” — Carl Sagan';
@@ -257,6 +259,35 @@ export const LANDMARKS: Record<string, Landmark[]> = {
       descCn: '比地球还大的反气旋风暴，已持续数百年。（经度会漂移，位置为近似值）' },
   ],
 };
+
+// ------------------------------------------------------------- galaxy view
+// Milky Way mode constants. Scene scale: 1 unit = 1,000 light-years
+// (galaxy radius 50 units ≈ 50,000 ly; Sun at 26 units ≈ 26,000 ly).
+export interface GalaxyPoi {
+  id: string; name: string; nameCn: string;
+  pos: [number, number, number];
+  desc: string; descCn: string;
+  color: string;
+}
+export const GALAXY_SUN_POS: [number, number, number] = [-20.8, 0.5, 15.6];
+export const GALAXY_SUN_LABEL = { name: 'SUN — YOU ARE HERE', nameCn: '太阳 · 你在这里' };
+export const GALAXY_POIS: GalaxyPoi[] = [
+  { id: 'sgra', name: 'SAGITTARIUS A*', nameCn: '银心 · 人马座 A*', pos: [0, 0, 0],
+    desc: 'The supermassive black hole at the galaxy\'s heart — about 4.3 million solar masses.',
+    descCn: '银河系中心的超大质量黑洞——约 430 万倍太阳质量。', color: 'rgba(255,232,176,1)' },
+  { id: 'm13', name: 'M13 · HERCULES CLUSTER', nameCn: 'M13 武仙座球状星团', pos: [12, 16, -10],
+    desc: 'A globular cluster of ~300,000 stars, 22,000 light-years away in the galactic halo.',
+    descCn: '约 30 万颗恒星组成的球状星团，位于银晕中，距离约 2.2 万光年。', color: 'rgba(207,224,255,1)' },
+  { id: 'm1', name: 'M1 · CRAB NEBULA', nameCn: 'M1 蟹状星云', pos: [-26, 0.6, 19.5],
+    desc: 'Remnant of a supernova recorded in 1054 AD — a pulsar beats at its core.',
+    descCn: '公元 1054 年超新星爆发的遗迹——核心是一颗脉冲星。', color: 'rgba(159,212,228,1)' },
+];
+export const GALAXY_ARMS = [
+  { name: 'SAGITTARIUS ARM', nameCn: '人马臂' },
+  { name: 'PERSEUS ARM', nameCn: '英仙臂' },
+  { name: 'NORMA ARM', nameCn: '矩尺臂' },
+  { name: 'ORION ARM', nameCn: '猎户臂' },
+];
 
 export const ORBITER_SPEC: PlanetSpec = {
   id: 'orbiter', name: 'LUNAR ORBITER', cn: '月球轨道器',

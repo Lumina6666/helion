@@ -9,8 +9,8 @@ import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
-  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS } from './data';
-import type { Landmark } from './data';
+  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS } from './data';
+import type { Landmark, GalaxyPoi } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
 import type { TextureSet } from './textures';
@@ -43,6 +43,8 @@ export interface HudSnapshot {
   globeFill: boolean;
   globeLabels: boolean;
   globeSpin: boolean;
+  galaxy: boolean;
+  galaxyLabels: boolean;
   experiment: boolean;
   bloom: boolean;
   shotName: string;
@@ -156,6 +158,16 @@ export class SolarEngine {
   private globeFillOn = false;
   private globeLabelsOn = true;
   private globeSpinOn = true;   // spin preserved in globe view; user can freeze it
+  // galaxy view ("Milky Way mode") state
+  private galaxy: {
+    savedSpeed: number; savedNear: number; savedFar: number; savedMin: number; savedMax: number;
+    hidden: Array<{ o: THREE.Object3D; v: boolean }>;
+  } | null = null;
+  private galaxyGroup: THREE.Group | null = null;
+  private galaxyLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; name: string; nameCn: string; poi?: GalaxyPoi; isSun?: boolean }> = [];
+  private galaxyLabelsOn = true;
+  private galaxySun: THREE.Sprite | null = null;
+  private galaxyFx: { kind: 'intro' | 'outro'; t: number; from: THREE.Vector3; to: THREE.Vector3; tgt: THREE.Vector3 } | null = null;
   private globeMarkers: THREE.Mesh[] = [];
   private lmLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; lm: Landmark }> = [];
   private dimmed: Array<{ m: THREE.Material; transparent: boolean; opacity: number }> = [];
@@ -1258,6 +1270,7 @@ export class SolarEngine {
       if (p.label) p.label.textContent = lang === 'zh' ? p.spec.cn : p.spec.name;
     }
     for (const L of this.lmLabels) L.el.textContent = lang === 'zh' ? L.lm.nameCn : L.lm.name;
+    for (const L of this.galaxyLabels) L.el.textContent = lang === 'zh' ? L.nameCn : L.name;
     this.voyagers.forEach(r => { r.lastAu = -1; }); // force live-range refresh
     this.emitSnapshot();
   }
@@ -1266,7 +1279,10 @@ export class SolarEngine {
     return this.lang === 'zh' ? node.spec.cn : node.spec.name;
   }
 
-  toggleCine() { this.setCine(!this.cine); }
+  toggleCine() {
+    if (!this.cine && this.galaxy) this.exitGalaxyView(true);
+    this.setCine(!this.cine);
+  }
 
   private setCine(on: boolean) {
     this.cine = on;
@@ -1288,6 +1304,8 @@ export class SolarEngine {
   setView(i: number) {
     const v = VIEWS[i];
     if (!v) return;
+    if (v.galaxy) { this.enterGalaxyView(); return; }
+    if (this.galaxy) this.exitGalaxyView(true);
     this.setCine(false);
     if (this.surface) this.exitSurfaceView(true);
     this.focus = null;
@@ -1388,6 +1406,7 @@ export class SolarEngine {
   // Jump the simulation clock to an absolute date (UTC).
   jumpToDate(d: Date) {
     if (this.globe) this.exitGlobeView(true);
+    if (this.galaxy) this.exitGalaxyView(true);
     this.simDays = (d.getTime() - BASE_DATE) / 86400000;
     if (this.experiment) this.resetExperiment(true); // integrated state can't time-jump
     this.eventCache = null;
@@ -1399,6 +1418,7 @@ export class SolarEngine {
   // Scrub relative to the current sim day (timeline dragging).
   scrubToDay(day: number) {
     if (this.globe) this.exitGlobeView(true);
+    if (this.galaxy) this.exitGalaxyView(true);
     this.simDays = day;
     if (this.experiment) this.resetExperiment(true);
     this.eventCache = null;
@@ -1443,6 +1463,7 @@ export class SolarEngine {
   enterSurfaceView(node?: PlanetNode) {
     if (this.surface) this.exitSurfaceView(true);
     if (this.globe) this.exitGlobeView(true);
+    if (this.galaxy) this.exitGalaxyView(true);
     const target = node ?? this.focus ?? this.planets.find(p => p.spec.id === 'earth');
     if (!target) return;
     this.setCine(false);
@@ -1577,6 +1598,228 @@ export class SolarEngine {
   }
 
   // ------------------------------------------------------------- batch 3
+  // ------------------------------------------------------------- galaxy view
+  // Milky Way mode: hide the solar system entirely and hand over a procedural
+  // particle galaxy (1 unit = 1,000 ly). Intro glide, sun marker with a
+  // click-to-return easter egg, POI labels, frozen sim time.
+  private gauss(): number {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  private buildGalaxy() {
+    const g = new THREE.Group();
+    g.visible = false;
+    this.scene.add(g);
+    this.galaxyGroup = g;
+
+    const N = 60000;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    const ARMS = 4, R_MAX = 50, WIND = 1.7;
+    for (let i = 0; i < N; i++) {
+      const pick = Math.random();
+      let x = 0, y = 0, z = 0;
+      let cr = 1, cg = 1, cb = 1;
+      if (pick < 0.62) {
+        // spiral arms: log-spiral lanes with radial dispersion
+        const arm = i % ARMS;
+        const t = Math.pow(Math.random(), 0.65);
+        const r = 4 + t * (R_MAX - 4);
+        const ang = (arm / ARMS) * Math.PI * 2 + Math.log(r / 4) * WIND + (Math.random() - 0.5) * (0.5 - t * 0.25);
+        const spread = 1.4 + t * 2.6;
+        x = Math.cos(ang) * r + (Math.random() - 0.5) * spread;
+        z = Math.sin(ang) * r + (Math.random() - 0.5) * spread;
+        y = (Math.random() - 0.5) * (1.2 - t * 0.7) * 2;
+        const b = 0.7 + Math.random() * 0.3;
+        cr = 0.6 * b; cg = 0.72 * b; cb = b;
+      } else if (pick < 0.85) {
+        // central bar (rotated 25°) + bulge — warm old stars
+        if (Math.random() < 0.55) {
+          const bx = this.gauss() * 4.4, bz = this.gauss() * 1.25, rot = 0.44;
+          x = bx * Math.cos(rot) - bz * Math.sin(rot);
+          z = bx * Math.sin(rot) + bz * Math.cos(rot);
+          y = this.gauss() * 0.8;
+        } else {
+          const rr = Math.abs(this.gauss()) * 2.3;
+          const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
+          x = rr * Math.sin(ph) * Math.cos(th);
+          y = rr * Math.cos(ph);
+          z = rr * Math.sin(ph) * Math.sin(th);
+        }
+        const w = 0.7 + Math.random() * 0.3;
+        cr = w; cg = 0.82 * w; cb = 0.58 * w;
+      } else {
+        // sparse halo
+        const rr = 18 + Math.random() * 36;
+        const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
+        x = rr * Math.sin(ph) * Math.cos(th);
+        y = rr * Math.cos(ph);
+        z = rr * Math.sin(ph) * Math.sin(th);
+        const d = 0.45 + Math.random() * 0.2;
+        cr = 0.8 * d; cg = 0.78 * d; cb = 0.75 * d;
+      }
+      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+      col[i * 3] = cr; col[i * 3 + 1] = cg; col[i * 3 + 2] = cb;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      size: 0.46, vertexColors: true, transparent: true, depthWrite: false,
+      map: glowSprite('rgba(255,255,255,1)', 'rgba(255,255,255,0.3)'),
+      blending: THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
+    }));
+    g.add(pts);
+
+    // markers + labels
+    const marker = (p: [number, number, number], color: string, scale: number) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowSprite(color, 'rgba(0,0,0,0)'),
+        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
+      }));
+      sp.position.set(p[0], p[1], p[2]);
+      sp.scale.setScalar(scale);
+      g.add(sp);
+      return sp;
+    };
+    const addLabel = (obj: THREE.Object3D, name: string, nameCn: string, extra?: Partial<{ poi: GalaxyPoi; isSun: boolean }>) => {
+      const el = document.createElement('div');
+      el.className = 'p-label gx-label' + (extra ? ' clickable' : '');
+      el.textContent = this.lang === 'zh' ? nameCn : name;
+      el.style.opacity = '0';
+      if (extra?.isSun) el.addEventListener('click', () => this.returnToSolarSystem());
+      else if (extra?.poi) el.addEventListener('click', () => this.toast(this.lang === 'zh' ? extra.poi!.descCn : extra.poi!.desc));
+      this.labelLayer.appendChild(el);
+      this.galaxyLabels.push({ el, obj, name, nameCn, poi: extra?.poi, isSun: extra?.isSun });
+    };
+
+    // the Sun — clickable, rides home
+    this.galaxySun = marker(GALAXY_SUN_POS, 'rgba(127,220,255,1)', 3.2);
+    addLabel(this.galaxySun, GALAXY_SUN_LABEL.name, GALAXY_SUN_LABEL.nameCn, { isSun: true });
+
+    // points of interest
+    for (const poi of GALAXY_POIS) {
+      const sp = marker(poi.pos, poi.color, poi.id === 'sgra' ? 4.5 : 2.2);
+      addLabel(sp, poi.name, poi.nameCn, { poi });
+    }
+
+    // arm labels at r ≈ 33 along each lane
+    for (let a = 0; a < ARMS; a++) {
+      const r = 33;
+      const ang = (a / ARMS) * Math.PI * 2 + Math.log(r / 4) * WIND + 0.35;
+      const anchor = new THREE.Object3D();
+      anchor.position.set(Math.cos(ang) * r, 1.5, Math.sin(ang) * r);
+      g.add(anchor);
+      addLabel(anchor, GALAXY_ARMS[a].name, GALAXY_ARMS[a].nameCn);
+    }
+  }
+
+  enterGalaxyView() {
+    const t = STR[this.lang];
+    if (this.experiment) { this.toast(t.toast.galNoExp); return; }
+    if (this.probe) { this.toast(t.toast.galNoProbe); return; }
+    if (this.galaxy) return;
+    if (this.globe) this.exitGlobeView(true);
+    if (this.surface) this.exitSurfaceView(true);
+    this.setCine(false);
+    this.tween = null;
+    this.focus = null;
+
+    this.galaxy = {
+      savedSpeed: this.params.speed,
+      savedNear: this.camera.near, savedFar: this.camera.far,
+      savedMin: this.controls.minDistance, savedMax: this.controls.maxDistance,
+      hidden: [],
+    };
+    this.setParam('speed', 0);
+
+    if (!this.galaxyGroup) this.buildGalaxy();
+
+    // hide the solar system, keep only the galaxy
+    for (const o of this.scene.children) {
+      if (o === this.galaxyGroup) continue;
+      this.galaxy.hidden.push({ o, v: o.visible });
+      o.visible = false;
+    }
+    this.galaxyGroup!.visible = true;
+
+    // camera regime for a 100k-light-year stage
+    this.camera.near = 0.5;
+    this.camera.far = 4000;
+    this.camera.updateProjectionMatrix();
+    this.controls.minDistance = 8;
+    this.controls.maxDistance = 320;
+
+    // intro: face-on → 3/4 push-in, hand over control at the end
+    this.controls.enabled = false;
+    this.camera.position.set(0.01, 210, 0.01);
+    this.controls.target.set(0, 0, 0);
+    this.galaxyFx = {
+      kind: 'intro', t: 0,
+      from: this.camera.position.clone(),
+      to: new THREE.Vector3(52, 58, 68),
+      tgt: new THREE.Vector3(0, 0, 0),
+    };
+
+    this.toast(t.toast.galaxyOn);
+    this.emitSnapshot();
+  }
+
+  exitGalaxyView(silent = false) {
+    const g = this.galaxy;
+    if (!g) return;
+    this.galaxy = null;
+    this.galaxyFx = null;
+    this.controls.enabled = true;
+    for (const h of g.hidden) h.o.visible = h.v;
+    if (this.galaxyGroup) this.galaxyGroup.visible = false;
+    this.camera.near = g.savedNear;
+    this.camera.far = g.savedFar;
+    this.camera.updateProjectionMatrix();
+    this.controls.minDistance = g.savedMin;
+    this.controls.maxDistance = g.savedMax;
+    if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
+    if (!silent) this.toast(STR[this.lang].toast.galaxyOff);
+    this.emitSnapshot();
+  }
+
+  // easter egg: click the Sun marker to ride the camera back home
+  returnToSolarSystem() {
+    if (!this.galaxy || this.galaxyFx) return;
+    const sunPos = new THREE.Vector3(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1], GALAXY_SUN_POS[2]);
+    this.controls.enabled = false;
+    this.galaxyFx = {
+      kind: 'outro', t: 0,
+      from: this.camera.position.clone(),
+      to: sunPos.clone().multiplyScalar(0.9),
+      tgt: sunPos,
+    };
+    this.toast(STR[this.lang].toast.galReturning);
+  }
+
+  toggleGalaxyLabels() {
+    this.galaxyLabelsOn = !this.galaxyLabelsOn;
+    this.emitSnapshot();
+  }
+
+  private updateGalaxyLabels() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const v = new THREE.Vector3();
+    for (const L of this.galaxyLabels) {
+      if (!this.galaxyLabelsOn) { L.el.style.opacity = '0'; continue; }
+      L.obj.getWorldPosition(v);
+      v.project(this.camera);
+      if (v.z > 1 || v.z < -1) { L.el.style.opacity = '0'; continue; }
+      const x = (v.x * 0.5 + 0.5) * w;
+      const y = (-v.y * 0.5 + 0.5) * h;
+      L.el.style.transform = `translate(-50%,-140%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+      L.el.style.opacity = '0.9';
+    }
+  }
+
   // ------------------------------------------------------------- globe view
   // "Specimen mode": isolate one body, dim the rest of the system, freeze sim
   // time and hand the camera to the user. Layers: graticule, fill light +
@@ -1593,6 +1836,7 @@ export class SolarEngine {
     if (this.experiment) { this.toast(t.toast.globeNoExp); return; }
     if (this.probe) { this.toast(t.toast.globeNoProbe); return; }
     if (this.globe) this.exitGlobeView(true);
+    if (this.galaxy) this.exitGalaxyView(true);
     if (this.surface) this.exitSurfaceView(true);
     this.setCine(false);
     this.tween = null;
@@ -1948,6 +2192,7 @@ export class SolarEngine {
   // 8 planets + a 13-Jupiter-mass brown dwarf, full mutual gravity, Sun pinned.
   injectRogue() {
     if (this.experiment) return;
+    if (this.galaxy) { this.toast(STR[this.lang].toast.galNoExp); return; }
     if (this.probe) this.exitProbeMode();
     if (this.globe) this.exitGlobeView(true);
     const t = STR[this.lang];
@@ -2280,6 +2525,7 @@ export class SolarEngine {
     if (this.probe) this.exitProbeMode();
     if (this.experiment) { this.toast(STR[this.lang].toast.expNoProbe); return; }
     if (this.globe) { this.toast(STR[this.lang].toast.globeNoProbe); return; }
+    if (this.galaxy) { this.toast(STR[this.lang].toast.galNoProbe); return; }
     if (this.surface) this.exitSurfaceView(true);
     if (!this.ephemOn) this.ephemOn = true; // physics needs real positions
 
@@ -2705,6 +2951,8 @@ export class SolarEngine {
       globeFill: this.globeFillOn,
       globeLabels: this.globeLabelsOn,
       globeSpin: this.globeSpinOn,
+      galaxy: this.galaxy !== null,
+      galaxyLabels: this.galaxyLabelsOn,
       experiment: this.experiment !== null,
       bloom: this.bloomOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
@@ -2846,6 +3094,36 @@ export class SolarEngine {
         ((this.globeTerm.material as THREE.ShaderMaterial).uniforms.uSunDir.value as THREE.Vector3).copy(wp).negate().normalize();
       }
       this.updateGlobeLabels();
+    }
+    if (this.galaxy && this.galaxyGroup) {
+      this.galaxyGroup.rotation.y += dt * 0.004; // decorative drift
+      if (this.galaxySun) this.galaxySun.scale.setScalar(3.2 + Math.sin(this.pulseT * 3) * 0.9);
+      if (this.galaxyFx) {
+        const fx = this.galaxyFx;
+        fx.t = Math.min(1, fx.t + dt / (fx.kind === 'intro' ? 3.0 : 1.6));
+        const e = fx.t * fx.t * (3 - 2 * fx.t); // smoothstep
+        this.camera.position.lerpVectors(fx.from, fx.to, e);
+        this.controls.target.copy(fx.tgt);
+        this.camera.lookAt(fx.tgt);
+        if (fx.t >= 1) {
+          if (fx.kind === 'intro') {
+            this.galaxyFx = null;
+            this.controls.enabled = true;
+          } else {
+            this.galaxyFx = null;
+            this.exitGalaxyView(true);
+            const v0 = VIEWS[0];
+            const pos = new THREE.Vector3(
+              Math.cos(v0.elevation * DEG) * Math.cos(v0.azimuth * DEG),
+              Math.sin(v0.elevation * DEG),
+              Math.cos(v0.elevation * DEG) * Math.sin(v0.azimuth * DEG),
+            ).multiplyScalar(v0.distance);
+            this.startTween(pos, new THREE.Vector3(0, 0, 0), 2.2);
+            this.toast(STR[this.lang].toast.galaxyOff);
+          }
+        }
+      }
+      this.updateGalaxyLabels();
     }
     this.updateCometTrail();
     this.updateProbe();
@@ -3061,6 +3339,7 @@ export class SolarEngine {
     const v = new THREE.Vector3();
     for (const p of this.planets) {
       const el = p.label!;
+      if (this.galaxy) { el.style.opacity = '0'; continue; }
       if (this.globe && !this.globe.sys.has(p.spec.id)) { el.style.opacity = '0'; continue; }
       p.body.getWorldPosition(v);
       const dist = v.distanceTo(this.camera.position);
