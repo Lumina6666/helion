@@ -339,7 +339,7 @@ export default function App() {
         </div>
       </div>
 
-      {snap?.galaxy && hudOn && (
+      {snap?.galaxy && hudOn && !snap?.gxTrans && (
         <>
           <div id="galaxycap">{t.galaxyCap}</div>
           <div id="galaxybar" className="ctl">

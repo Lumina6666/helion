@@ -973,3 +973,11 @@ body { position: fixed; inset: 0; }
   #galaxybar { bottom: 20px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 24px); }
   #galaxycap { font-size: 8.5px; width: 90vw; text-align: center; }
 }
+
+/* warp transition overlay — radial star-streak canvas (screen-space) */
+#warpfx {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+  pointer-events: none;
+}

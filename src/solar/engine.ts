@@ -45,6 +45,7 @@ export interface HudSnapshot {
   globeSpin: boolean;
   galaxy: boolean;
   galaxyLabels: boolean;
+  gxTrans: boolean;
   experiment: boolean;
   bloom: boolean;
   shotName: string;
@@ -167,7 +168,16 @@ export class SolarEngine {
   private galaxyLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; name: string; nameCn: string; poi?: GalaxyPoi; isSun?: boolean }> = [];
   private galaxyLabelsOn = true;
   private galaxySun: THREE.Sprite | null = null;
-  private galaxyFx: { kind: 'intro' | 'outro'; t: number; from: THREE.Vector3; to: THREE.Vector3; tgt: THREE.Vector3 } | null = null;
+  private gxTrans: {
+    dir: 'toGalaxy' | 'toSolar'; stage: 0 | 1 | 2; t: number;
+    fromPos: THREE.Vector3; toPos: THREE.Vector3;
+    fromTgt: THREE.Vector3; toTgt: THREE.Vector3;
+    arrPos: THREE.Vector3; swapped: boolean;
+  } | null = null;
+  private warpCanvas: HTMLCanvasElement | null = null;
+  private warpCtx: CanvasRenderingContext2D | null = null;
+  private warpIntensity = 0;
+  private warpSeeds: Array<{ a: number; r: number; v: number; hue: number }> = [];
   private globeMarkers: THREE.Mesh[] = [];
   private lmLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; lm: Landmark }> = [];
   private dimmed: Array<{ m: THREE.Material; transparent: boolean; opacity: number }> = [];
@@ -1280,6 +1290,7 @@ export class SolarEngine {
   }
 
   toggleCine() {
+    if (this.gxTrans) return;
     if (!this.cine && this.galaxy) this.exitGalaxyView(true);
     this.setCine(!this.cine);
   }
@@ -1303,7 +1314,7 @@ export class SolarEngine {
 
   setView(i: number) {
     const v = VIEWS[i];
-    if (!v) return;
+    if (!v || this.gxTrans) return;
     if (v.galaxy) { this.enterGalaxyView(); return; }
     if (this.galaxy) this.exitGalaxyView(true);
     this.setCine(false);
@@ -1405,6 +1416,7 @@ export class SolarEngine {
 
   // Jump the simulation clock to an absolute date (UTC).
   jumpToDate(d: Date) {
+    if (this.gxTrans) return;
     if (this.globe) this.exitGlobeView(true);
     if (this.galaxy) this.exitGalaxyView(true);
     this.simDays = (d.getTime() - BASE_DATE) / 86400000;
@@ -1417,6 +1429,7 @@ export class SolarEngine {
 
   // Scrub relative to the current sim day (timeline dragging).
   scrubToDay(day: number) {
+    if (this.gxTrans) return;
     if (this.globe) this.exitGlobeView(true);
     if (this.galaxy) this.exitGalaxyView(true);
     this.simDays = day;
@@ -1461,6 +1474,7 @@ export class SolarEngine {
 
   // stand on a planet's surface and look at the sky
   enterSurfaceView(node?: PlanetNode) {
+    if (this.gxTrans) return;
     if (this.surface) this.exitSurfaceView(true);
     if (this.globe) this.exitGlobeView(true);
     if (this.galaxy) this.exitGalaxyView(true);
@@ -1615,64 +1629,90 @@ export class SolarEngine {
     this.scene.add(g);
     this.galaxyGroup = g;
 
-    const N = 60000;
-    const pos = new Float32Array(N * 3);
-    const col = new Float32Array(N * 3);
     const ARMS = 4, R_MAX = 50, WIND = 1.7;
-    for (let i = 0; i < N; i++) {
-      const pick = Math.random();
-      let x = 0, y = 0, z = 0;
-      let cr = 1, cg = 1, cb = 1;
-      if (pick < 0.62) {
-        // spiral arms: log-spiral lanes with radial dispersion
-        const arm = i % ARMS;
-        const t = Math.pow(Math.random(), 0.65);
-        const r = 4 + t * (R_MAX - 4);
-        const ang = (arm / ARMS) * Math.PI * 2 + Math.log(r / 4) * WIND + (Math.random() - 0.5) * (0.5 - t * 0.25);
-        const spread = 1.4 + t * 2.6;
-        x = Math.cos(ang) * r + (Math.random() - 0.5) * spread;
-        z = Math.sin(ang) * r + (Math.random() - 0.5) * spread;
-        y = (Math.random() - 0.5) * (1.2 - t * 0.7) * 2;
-        const b = 0.7 + Math.random() * 0.3;
-        cr = 0.6 * b; cg = 0.72 * b; cb = b;
-      } else if (pick < 0.85) {
-        // central bar (rotated 25°) + bulge — warm old stars
-        if (Math.random() < 0.55) {
-          const bx = this.gauss() * 4.4, bz = this.gauss() * 1.25, rot = 0.44;
-          x = bx * Math.cos(rot) - bz * Math.sin(rot);
-          z = bx * Math.sin(rot) + bz * Math.cos(rot);
-          y = this.gauss() * 0.8;
-        } else {
-          const rr = Math.abs(this.gauss()) * 2.3;
-          const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
-          x = rr * Math.sin(ph) * Math.cos(th);
-          y = rr * Math.cos(ph);
-          z = rr * Math.sin(ph) * Math.sin(th);
-        }
-        const w = 0.7 + Math.random() * 0.3;
-        cr = w; cg = 0.82 * w; cb = 0.58 * w;
-      } else {
-        // sparse halo
-        const rr = 18 + Math.random() * 36;
-        const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
-        x = rr * Math.sin(ph) * Math.cos(th);
-        y = rr * Math.cos(ph);
-        z = rr * Math.sin(ph) * Math.sin(th);
-        const d = 0.45 + Math.random() * 0.2;
-        cr = 0.8 * d; cg = 0.78 * d; cb = 0.75 * d;
+    const glowTex = glowSprite('rgba(255,255,255,1)', 'rgba(255,255,255,0.25)');
+
+    // population samplers — galactocentric positions
+    const armSample = (tight: number): [number, number, number, number] => {
+      const arm = Math.floor(Math.random() * ARMS);
+      const t = Math.pow(Math.random(), 0.6);
+      const r = 4 + t * (R_MAX - 4);
+      const ang = (arm / ARMS) * Math.PI * 2 + Math.log(r / 4) * WIND + (Math.random() - 0.5) * 0.3 * tight;
+      const sp = (1.1 + t * 2.2) * tight;
+      return [
+        Math.cos(ang) * r + this.gauss() * sp * 0.55,
+        (Math.random() - 0.5) * (1.4 - t * 0.8),
+        Math.sin(ang) * r + this.gauss() * sp * 0.55,
+        t,
+      ];
+    };
+    const warmSample = (): [number, number, number, number] => {
+      if (Math.random() < 0.55) {
+        const bx = this.gauss() * 4.4, bz = this.gauss() * 1.25, rot = 0.44;
+        return [bx * Math.cos(rot) - bz * Math.sin(rot), this.gauss() * 0.8, bx * Math.sin(rot) + bz * Math.cos(rot), 0];
       }
-      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
-      col[i * 3] = cr; col[i * 3 + 1] = cg; col[i * 3 + 2] = cb;
+      const rr = Math.abs(this.gauss()) * 2.3;
+      const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
+      return [rr * Math.sin(ph) * Math.cos(th), rr * Math.cos(ph), rr * Math.sin(ph) * Math.sin(th), 0];
+    };
+    const haloSample = (): [number, number, number, number] => {
+      const rr = 18 + Math.random() * 36;
+      const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
+      return [rr * Math.sin(ph) * Math.cos(th), rr * Math.cos(ph), rr * Math.sin(ph) * Math.sin(th), 0];
+    };
+
+    // one draw call per layer — points clouds with per-point colors
+    const cloud = (
+      count: number, size: number, opacity: number,
+      sampler: () => [number, number, number, number],
+      colorize: () => [number, number, number],
+    ) => {
+      const pos = new Float32Array(count * 3);
+      const col = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const [x, y, z] = sampler();
+        pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+        const [cr, cg, cb] = colorize();
+        col[i * 3] = cr; col[i * 3 + 1] = cg; col[i * 3 + 2] = cb;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.add(new THREE.Points(geo, new THREE.PointsMaterial({
+        size, vertexColors: true, transparent: true, opacity, depthWrite: false,
+        map: glowTex, blending: THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
+      })));
+    };
+
+    // 1) discrete star backdrop across all populations
+    cloud(22000, 0.34, 0.9, () => {
+      const pick = Math.random();
+      if (pick < 0.62) return armSample(1);
+      if (pick < 0.85) return warmSample();
+      return haloSample();
+    }, () => {
+      const b = 0.75 + Math.random() * 0.45;
+      return Math.random() < 0.75 ? [0.75 * b, 0.85 * b, b] : [b, 0.85 * b, 0.66 * b];
+    });
+    // 2) milky nebula veils — the continuous fog that makes the arms glow
+    cloud(300, 9.5, 0.085, () => armSample(1.2), () => [0.62, 0.72, 0.92]);
+    cloud(480, 5.0, 0.11, () => armSample(1.0), () => [0.68, 0.78, 0.96]);
+    cloud(620, 2.6, 0.13, () => armSample(0.7), () => [0.74, 0.82, 0.99]);
+    // 3) warm haze — central bar + bulge
+    cloud(200, 5.5, 0.11, () => warmSample(), () => [1.0, 0.86, 0.62]);
+    // 4) pink H II star-forming knots dotted along the lanes
+    cloud(300, 1.6, 0.5, () => armSample(0.4), () => [1.0, 0.42 + Math.random() * 0.2, 0.62]);
+
+    // 5) luminous galactic core — stacked golden glows
+    const coreTex = glowSprite('rgba(255,238,200,1)', 'rgba(255,180,90,0.35)');
+    for (const [sc, op] of [[8, 0.9], [17, 0.55], [34, 0.28]] as Array<[number, number]>) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: coreTex, transparent: true, opacity: op,
+        depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+      }));
+      sp.scale.setScalar(sc);
+      g.add(sp);
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 0.46, vertexColors: true, transparent: true, depthWrite: false,
-      map: glowSprite('rgba(255,255,255,1)', 'rgba(255,255,255,0.3)'),
-      blending: THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
-    }));
-    g.add(pts);
 
     // markers + labels
     const marker = (p: [number, number, number], color: string, scale: number) => {
@@ -1721,7 +1761,7 @@ export class SolarEngine {
     const t = STR[this.lang];
     if (this.experiment) { this.toast(t.toast.galNoExp); return; }
     if (this.probe) { this.toast(t.toast.galNoProbe); return; }
-    if (this.galaxy) return;
+    if (this.galaxy || this.gxTrans) return;
     if (this.globe) this.exitGlobeView(true);
     if (this.surface) this.exitSurfaceView(true);
     this.setCine(false);
@@ -1735,69 +1775,199 @@ export class SolarEngine {
       hidden: [],
     };
     this.setParam('speed', 0);
-
     if (!this.galaxyGroup) this.buildGalaxy();
+    this.ensureWarpCanvas();
 
-    // hide the solar system, keep only the galaxy
-    for (const o of this.scene.children) {
-      if (o === this.galaxyGroup) continue;
-      this.galaxy.hidden.push({ o, v: o.visible });
-      o.visible = false;
-    }
-    this.galaxyGroup!.visible = true;
-
-    // camera regime for a 100k-light-year stage
-    this.camera.near = 0.5;
-    this.camera.far = 4000;
-    this.camera.updateProjectionMatrix();
-    this.controls.minDistance = 8;
-    this.controls.maxDistance = 320;
-
-    // intro: face-on → 3/4 push-in, hand over control at the end
+    // stage 0: pull away from the solar system along the current view direction
     this.controls.enabled = false;
-    this.camera.position.set(0.01, 210, 0.01);
-    this.controls.target.set(0, 0, 0);
-    this.galaxyFx = {
-      kind: 'intro', t: 0,
-      from: this.camera.position.clone(),
-      to: new THREE.Vector3(52, 58, 68),
-      tgt: new THREE.Vector3(0, 0, 0),
+    const dir = this.camera.position.clone().sub(this.controls.target);
+    if (dir.lengthSq() < 1e-6) dir.set(0.5, 0.4, 0.75);
+    dir.normalize();
+    this.gxTrans = {
+      dir: 'toGalaxy', stage: 0, t: 0, swapped: false,
+      fromPos: this.camera.position.clone(),
+      toPos: dir.clone().multiplyScalar(620),
+      fromTgt: this.controls.target.clone(),
+      toTgt: new THREE.Vector3(0, 0, 0),
+      arrPos: new THREE.Vector3(52, 58, 68),
     };
-
     this.toast(t.toast.galaxyOn);
     this.emitSnapshot();
   }
 
   exitGalaxyView(silent = false) {
     const g = this.galaxy;
-    if (!g) return;
+    if (!g || this.gxTrans) return;
+    this.applyGalaxyScene(false);
     this.galaxy = null;
-    this.galaxyFx = null;
-    this.controls.enabled = true;
-    for (const h of g.hidden) h.o.visible = h.v;
-    if (this.galaxyGroup) this.galaxyGroup.visible = false;
-    this.camera.near = g.savedNear;
-    this.camera.far = g.savedFar;
-    this.camera.updateProjectionMatrix();
-    this.controls.minDistance = g.savedMin;
-    this.controls.maxDistance = g.savedMax;
     if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
     if (!silent) this.toast(STR[this.lang].toast.galaxyOff);
     this.emitSnapshot();
   }
 
-  // easter egg: click the Sun marker to ride the camera back home
+  // easter egg: click the Sun marker — locate it, dive in through the warp, ride home
   returnToSolarSystem() {
-    if (!this.galaxy || this.galaxyFx) return;
+    if (!this.galaxy || this.gxTrans) return;
     const sunPos = new THREE.Vector3(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1], GALAXY_SUN_POS[2]);
     this.controls.enabled = false;
-    this.galaxyFx = {
-      kind: 'outro', t: 0,
-      from: this.camera.position.clone(),
-      to: sunPos.clone().multiplyScalar(0.9),
-      tgt: sunPos,
+    this.ensureWarpCanvas();
+    const away = this.camera.position.clone().sub(sunPos);
+    if (away.lengthSq() < 1e-6) away.set(1, 0.6, 1);
+    away.normalize();
+    const v0 = VIEWS[0];
+    const arrPos = new THREE.Vector3(
+      Math.cos(v0.elevation * DEG) * Math.cos(v0.azimuth * DEG),
+      Math.sin(v0.elevation * DEG),
+      Math.cos(v0.elevation * DEG) * Math.sin(v0.azimuth * DEG),
+    ).multiplyScalar(v0.distance);
+    this.gxTrans = {
+      dir: 'toSolar', stage: 0, t: 0, swapped: false,
+      fromPos: this.camera.position.clone(),
+      toPos: sunPos.clone().addScaledVector(away, 55), // swing to face the Sun marker
+      fromTgt: this.controls.target.clone(),
+      toTgt: sunPos,
+      arrPos,
     };
     this.toast(STR[this.lang].toast.galReturning);
+    this.emitSnapshot();
+  }
+
+  private applyGalaxyScene(on: boolean) {
+    const g = this.galaxy!;
+    if (on) {
+      for (const o of this.scene.children) {
+        if (o === this.galaxyGroup) continue;
+        g.hidden.push({ o, v: o.visible });
+        o.visible = false;
+      }
+      this.galaxyGroup!.visible = true;
+      this.camera.near = 0.5;
+      this.camera.far = 4000;
+      this.camera.updateProjectionMatrix();
+      this.controls.minDistance = 8;
+      this.controls.maxDistance = 320;
+    } else {
+      for (const h of g.hidden) h.o.visible = h.v;
+      g.hidden = [];
+      if (this.galaxyGroup) this.galaxyGroup.visible = false;
+      this.camera.near = g.savedNear;
+      this.camera.far = g.savedFar;
+      this.camera.updateProjectionMatrix();
+      this.controls.minDistance = g.savedMin;
+      this.controls.maxDistance = g.savedMax;
+    }
+  }
+
+  // warp transition state machine — both directions share three stages:
+  // travel → star-streak warp (scene swap at peak) → arrive & settle
+  private updateGxTransition(dt: number) {
+    const fx = this.gxTrans;
+    if (!fx) return;
+    const durs = fx.dir === 'toGalaxy' ? [2.0, 1.6, 2.2] : [1.5, 1.6, 2.2];
+    fx.t = Math.min(1, fx.t + dt / durs[fx.stage]);
+    const e = fx.t * fx.t * (3 - 2 * fx.t); // smoothstep
+
+    if (fx.dir === 'toGalaxy') {
+      if (fx.stage === 0) {
+        this.camera.position.lerpVectors(fx.fromPos, fx.toPos, e);
+        this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, e);
+        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; }
+      } else if (fx.stage === 1) {
+        this.warpIntensity = fx.t;
+        if (fx.t >= 0.5 && !fx.swapped) {
+          fx.swapped = true;
+          this.applyGalaxyScene(true);
+          this.camera.position.set(0.01, 235, 0.01);
+          this.controls.target.set(0, 0, 0);
+          fx.fromPos.copy(this.camera.position);
+        }
+        if (fx.t >= 1) { fx.stage = 2; fx.t = 0; }
+      } else {
+        this.warpIntensity = 1 - fx.t;
+        this.camera.position.lerpVectors(fx.fromPos, fx.arrPos, e);
+        if (fx.t >= 1) {
+          this.gxTrans = null;
+          this.warpIntensity = 0;
+          this.controls.enabled = true;
+          this.emitSnapshot();
+        }
+      }
+    } else {
+      if (fx.stage === 0) {
+        // locate home: swing the view onto the Sun marker
+        this.camera.position.lerpVectors(fx.fromPos, fx.toPos, e);
+        this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, e);
+        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; fx.fromPos.copy(this.camera.position); }
+      } else if (fx.stage === 1) {
+        this.warpIntensity = fx.t;
+        this.camera.position.lerpVectors(fx.fromPos, fx.toTgt.clone().multiplyScalar(1.02), e);
+        if (fx.t >= 0.5 && !fx.swapped) {
+          fx.swapped = true;
+          this.applyGalaxyScene(false);
+          this.camera.position.set(46, 30, 58);
+          this.controls.target.set(0, 0, 0);
+          fx.fromPos.copy(this.camera.position);
+          const g = this.galaxy!;
+          if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
+          this.galaxy = null;
+          this.emitSnapshot();
+        }
+        if (fx.t >= 1) { fx.stage = 2; fx.t = 0; }
+      } else {
+        this.warpIntensity = 1 - fx.t;
+        this.camera.position.lerpVectors(fx.fromPos, fx.arrPos, e);
+        if (fx.t >= 1) {
+          this.gxTrans = null;
+          this.warpIntensity = 0;
+          this.controls.enabled = true;
+          this.toast(STR[this.lang].toast.galaxyOff);
+          this.emitSnapshot();
+        }
+      }
+    }
+  }
+
+  // screen-space star-streak warp ("星河流转") on a 2D overlay canvas
+  private ensureWarpCanvas() {
+    if (this.warpCanvas) return;
+    const c = document.createElement('canvas');
+    c.id = 'warpfx';
+    document.body.appendChild(c);
+    this.warpCanvas = c;
+    this.warpCtx = c.getContext('2d');
+    for (let i = 0; i < 110; i++) {
+      this.warpSeeds.push({ a: Math.random() * Math.PI * 2, r: Math.random(), v: 0.6 + Math.random() * 0.9, hue: Math.random() });
+    }
+  }
+
+  private drawWarp(dt: number) {
+    if (!this.warpCtx || !this.warpCanvas) return;
+    const ctx = this.warpCtx, c = this.warpCanvas;
+    if (c.width !== window.innerWidth || c.height !== window.innerHeight) {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+    }
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (this.warpIntensity <= 0.01) return;
+    const cx = c.width / 2, cy = c.height / 2, maxR = Math.hypot(cx, cy);
+    const swirl = this.pulseT * 0.3;
+    for (const sd of this.warpSeeds) {
+      sd.r += dt * sd.v * this.warpIntensity * 1.7;
+      if (sd.r > 1) { sd.r = 0.02; sd.a = Math.random() * Math.PI * 2; }
+      const a = sd.a + swirl * (0.3 + sd.r * 0.6);
+      const r1 = sd.r * maxR;
+      const len = (0.05 + this.warpIntensity * 0.4) * maxR * sd.v * sd.r;
+      const r0 = Math.max(0, r1 - len);
+      const alpha = this.warpIntensity * Math.min(1, sd.r * 2) * 0.8;
+      ctx.strokeStyle = sd.hue < 0.7
+        ? `rgba(190,220,255,${alpha})`
+        : sd.hue < 0.9 ? `rgba(140,200,255,${alpha})` : `rgba(255,220,190,${alpha})`;
+      ctx.lineWidth = 1 + sd.v;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.stroke();
+    }
   }
 
   toggleGalaxyLabels() {
@@ -1833,6 +2003,7 @@ export class SolarEngine {
     const t = STR[this.lang];
     const target = node ?? this.focus;
     if (!target || !SolarEngine.GLOBEABLE.has(target.spec.id)) { this.toast(t.toast.globeNoBody); return; }
+    if (this.gxTrans) return;
     if (this.experiment) { this.toast(t.toast.globeNoExp); return; }
     if (this.probe) { this.toast(t.toast.globeNoProbe); return; }
     if (this.globe) this.exitGlobeView(true);
@@ -2191,7 +2362,7 @@ export class SolarEngine {
   // ---- rogue-object N-body experiment --------------------------------------
   // 8 planets + a 13-Jupiter-mass brown dwarf, full mutual gravity, Sun pinned.
   injectRogue() {
-    if (this.experiment) return;
+    if (this.experiment || this.gxTrans) return;
     if (this.galaxy) { this.toast(STR[this.lang].toast.galNoExp); return; }
     if (this.probe) this.exitProbeMode();
     if (this.globe) this.exitGlobeView(true);
@@ -2523,6 +2694,7 @@ export class SolarEngine {
 
   enterProbeMode(mission: ProbeMission = 'flyby', target = 'mars') {
     if (this.probe) this.exitProbeMode();
+    if (this.gxTrans) return;
     if (this.experiment) { this.toast(STR[this.lang].toast.expNoProbe); return; }
     if (this.globe) { this.toast(STR[this.lang].toast.globeNoProbe); return; }
     if (this.galaxy) { this.toast(STR[this.lang].toast.galNoProbe); return; }
@@ -2952,6 +3124,7 @@ export class SolarEngine {
       globeLabels: this.globeLabelsOn,
       globeSpin: this.globeSpinOn,
       galaxy: this.galaxy !== null,
+      gxTrans: this.gxTrans !== null,
       galaxyLabels: this.galaxyLabelsOn,
       experiment: this.experiment !== null,
       bloom: this.bloomOn,
@@ -3096,35 +3269,12 @@ export class SolarEngine {
       this.updateGlobeLabels();
     }
     if (this.galaxy && this.galaxyGroup) {
-      this.galaxyGroup.rotation.y += dt * 0.004; // decorative drift
+      this.galaxyGroup.rotation.y += dt * 0.018; // gentle, perceptible drift
       if (this.galaxySun) this.galaxySun.scale.setScalar(3.2 + Math.sin(this.pulseT * 3) * 0.9);
-      if (this.galaxyFx) {
-        const fx = this.galaxyFx;
-        fx.t = Math.min(1, fx.t + dt / (fx.kind === 'intro' ? 3.0 : 1.6));
-        const e = fx.t * fx.t * (3 - 2 * fx.t); // smoothstep
-        this.camera.position.lerpVectors(fx.from, fx.to, e);
-        this.controls.target.copy(fx.tgt);
-        this.camera.lookAt(fx.tgt);
-        if (fx.t >= 1) {
-          if (fx.kind === 'intro') {
-            this.galaxyFx = null;
-            this.controls.enabled = true;
-          } else {
-            this.galaxyFx = null;
-            this.exitGalaxyView(true);
-            const v0 = VIEWS[0];
-            const pos = new THREE.Vector3(
-              Math.cos(v0.elevation * DEG) * Math.cos(v0.azimuth * DEG),
-              Math.sin(v0.elevation * DEG),
-              Math.cos(v0.elevation * DEG) * Math.sin(v0.azimuth * DEG),
-            ).multiplyScalar(v0.distance);
-            this.startTween(pos, new THREE.Vector3(0, 0, 0), 2.2);
-            this.toast(STR[this.lang].toast.galaxyOff);
-          }
-        }
-      }
-      this.updateGalaxyLabels();
+      if (!this.gxTrans) this.updateGalaxyLabels();
     }
+    this.updateGxTransition(dt);
+    this.drawWarp(dt);
     this.updateCometTrail();
     this.updateProbe();
     this.updateLagrange();
