@@ -193,7 +193,7 @@ export default function App() {
           else eng.enterSurfaceView();
           break;
         }
-        case 'escape': eng.exitSurfaceView(); eng.exitGlobeView(true); eng.exitGalaxyView(true); eng.clearFocus(); setHudOn(true); break;
+        case 'escape': if (eng.exitGalaxyObserve()) { setHudOn(true); break; } eng.exitSurfaceView(); eng.exitGlobeView(true); eng.exitGalaxyView(true); eng.clearFocus(); setHudOn(true); break;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -345,6 +345,7 @@ export default function App() {
           <div id="galaxybar" className="ctl">
             <span className="gb-title">◌ {t.galaxyTitle}</span>
             <button className={`hbtn ${snap.galaxyLabels ? 'active' : ''}`} onClick={() => eng()?.toggleGalaxyLabels()}>{t.galaxyLabels}</button>
+            <button className="hbtn" onClick={() => { if (eng()?.toggleGalaxyObserve()) setHudOn(false); }}>{t.galaxyObserve}</button>
             <button className="hbtn gb-exit" onClick={() => eng()?.exitGalaxyView()}>{t.galaxyExit}</button>
           </div>
         </>
@@ -362,8 +363,11 @@ export default function App() {
         </div>
       )}
 
-      {!hudOn && (
+      {!hudOn && !snap?.galaxyObserve && (
         <button id="btn-exit-immersive" onClick={toggleHud}>{t.exitImmersive}</button>
+      )}
+      {!hudOn && snap?.galaxyObserve && (
+        <button id="btn-observe-exit" onClick={() => { eng()?.exitGalaxyObserve(); setHudOn(true); }}>{t.galaxyObserveExit}</button>
       )}
 
       <div id="params" className={paramsOpen && hudOn ? 'ctl' : 'ctl hidden'}>

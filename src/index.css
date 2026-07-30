@@ -883,6 +883,24 @@ body { position: fixed; inset: 0; }
 }
 #btn-exit-immersive:hover { opacity: 1; background: rgba(127, 220, 255, .12); }
 
+#btn-observe-exit {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 40;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  background: rgba(127, 220, 255, .04);
+  border: 1px solid rgba(127, 220, 255, .28);
+  color: var(--cyan);
+  padding: 8px 14px;
+  cursor: pointer;
+  opacity: .85;
+}
+#btn-observe-exit:hover { opacity: 1; background: rgba(127, 220, 255, .12); }
+
 /* globe view: bottom control bar */
 #globebar {
   position: fixed;
@@ -965,8 +983,8 @@ body { position: fixed; inset: 0; }
 #galaxybar .gb-exit { border-color: rgba(255, 190, 120, 0.4); color: #ffd9a0; }
 
 /* galaxy view: marker labels */
-.p-label.gx-label { font-size: 8px; letter-spacing: 0.14em; color: rgba(220, 232, 245, 0.85); text-shadow: 0 0 8px rgba(0, 0, 0, 0.9); }
-.p-label.gx-label.clickable { pointer-events: auto; cursor: pointer; color: #9fdcff; }
+.p-label.gx-label { font-size: 8px; letter-spacing: 0.14em; color: rgba(200, 214, 232, 0.62); text-shadow: 0 0 5px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.9); }
+.p-label.gx-label.clickable { pointer-events: auto; cursor: pointer; color: rgba(159, 220, 255, 0.9); }
 .p-label.gx-label.clickable:hover { color: #e2f6ff; }
 
 @media (max-width: 900px) {

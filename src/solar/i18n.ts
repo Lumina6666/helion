@@ -55,6 +55,8 @@ export interface Strings {
   galaxyCap: string;
   galaxyLabels: string;
   galaxyExit: string;
+  galaxyObserve: string;
+  galaxyObserveExit: string;
   diameter: string;
   vsEarth: string;
   rangeNow: string;
@@ -251,6 +253,8 @@ export const STR: Record<Lang, Strings> = {
     galaxyCap: 'THE MILKY WAY · ~100,000 LIGHT-YEARS ACROSS',
     galaxyLabels: 'LABELS',
     galaxyExit: 'EXIT GALAXY VIEW',
+    galaxyObserve: 'OBSERVE',
+    galaxyObserveExit: 'EXIT OBSERVE · ESC',
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
@@ -445,6 +449,8 @@ export const STR: Record<Lang, Strings> = {
     galaxyCap: '银河系 · 直径约 100,000 光年',
     galaxyLabels: '标注',
     galaxyExit: '退出银河视图',
+    galaxyObserve: '观赏',
+    galaxyObserveExit: '退出观赏 · Esc',
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',
