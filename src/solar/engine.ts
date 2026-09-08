@@ -181,7 +181,13 @@ export class SolarEngine {
   private warpCanvas: HTMLCanvasElement | null = null;
   private warpCtx: CanvasRenderingContext2D | null = null;
   private warpIntensity = 0;
-  private warpSeeds: Array<{ a: number; r: number; v: number; hue: number }> = [];
+  private warpGroup: THREE.LineSegments | null = null; // 3D streak tunnel
+  private warpMeta: Array<{ x: number; y: number; z: number; v: number }> = [];
+  private gxFlash = 0;         // white exposure pulse at the scene swap
+  private savedFov = 55;       // camera fov before the warp kick
+  private destPos = new THREE.Vector3(); // mini-galaxy rendezvous point (toGalaxy)
+  private warpSfxWhoosh: HTMLAudioElement | null = null;
+  private warpSfxBoom: HTMLAudioElement | null = null;
   private globeMarkers: THREE.Mesh[] = [];
   private lmLabels: Array<{ el: HTMLElement; obj: THREE.Object3D; lm: Landmark }> = [];
   private dimmed: Array<{ m: THREE.Material; transparent: boolean; opacity: number }> = [];
@@ -1859,6 +1865,13 @@ export class SolarEngine {
       toTgt: new THREE.Vector3(0, 0, 0),
       arrPos: new THREE.Vector3(36, 40, 47),
     };
+    // destination stand-in: the real galaxy group, shrunken, parked far ahead
+    this.savedFov = this.camera.fov;
+    this.destPos.copy(this.gxTrans.toPos).addScaledVector(dir, 300);
+    this.galaxyGroup!.position.copy(this.destPos);
+    this.galaxyGroup!.scale.setScalar(0.02);
+    this.galaxyGroup!.visible = true;
+    this.ensureWarpTunnel();
     this.toast(t.toast.galaxyOn);
     this.emitSnapshot();
   }
@@ -1881,6 +1894,8 @@ export class SolarEngine {
     const sunPos = new THREE.Vector3(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1], GALAXY_SUN_POS[2]);
     this.controls.enabled = false;
     this.ensureWarpCanvas();
+    this.ensureWarpTunnel();
+    this.savedFov = this.camera.fov;
     const away = this.camera.position.clone().sub(sunPos);
     if (away.lengthSq() < 1e-6) away.set(1, 0.6, 1);
     away.normalize();
@@ -1906,11 +1921,13 @@ export class SolarEngine {
     const g = this.galaxy!;
     if (on) {
       for (const o of this.scene.children) {
-        if (o === this.galaxyGroup) continue;
+        if (o === this.galaxyGroup || o === this.warpGroup) continue;
         g.hidden.push({ o, v: o.visible });
         o.visible = false;
       }
       this.galaxyGroup!.visible = true;
+      this.galaxyGroup!.position.set(0, 0, 0);
+      this.galaxyGroup!.scale.setScalar(1);
       g.savedBg = this.scene.background;
       this.scene.background = new THREE.Color(0x06080e); // deep-night tint, barely off black
       this.camera.near = 0.5;
@@ -1943,12 +1960,28 @@ export class SolarEngine {
     if (fx.dir === 'toGalaxy') {
       if (fx.stage === 0) {
         this.camera.position.lerpVectors(fx.fromPos, fx.toPos, e);
-        this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, e);
-        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; }
+        // two beats: watch home shrink away, then turn to face the far galaxy
+        if (fx.t < 0.55) {
+          this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, Math.min(1, fx.t / 0.55));
+        } else {
+          const e2 = (fx.t - 0.55) / 0.45;
+          this.controls.target.lerpVectors(fx.toTgt, this.destPos, e2 * e2 * (3 - 2 * e2));
+        }
+        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; this.playWarpSfx(false); }
       } else if (fx.stage === 1) {
         this.warpIntensity = fx.t;
+        // the destination galaxy swells up and swallows the camera
+        // (frozen after the swap — the real galaxy scene owns the transform then)
+        if (!fx.swapped) {
+          const gg = this.galaxyGroup!;
+          const ge = fx.t * fx.t;
+          gg.position.lerpVectors(this.destPos, this.camera.position, ge * 0.96);
+          gg.scale.setScalar(0.02 + ge * 4);
+        }
         if (fx.t >= 0.5 && !fx.swapped) {
           fx.swapped = true;
+          this.gxFlash = 1;
+          this.playWarpSfx(true);
           this.applyGalaxyScene(true);
           this.camera.position.set(0.01, 235, 0.01);
           this.controls.target.set(0, 0, 0);
@@ -1963,6 +1996,9 @@ export class SolarEngine {
           this.gxTrans = null;
           this.warpIntensity = 0;
           this.gxVeil = 0;
+          this.camera.fov = this.savedFov;
+          this.camera.updateProjectionMatrix();
+          this.camera.up.set(0, 1, 0);
           this.controls.enabled = true;
           this.emitSnapshot();
         }
@@ -1972,13 +2008,17 @@ export class SolarEngine {
         // locate home: swing the view onto the Sun marker
         this.camera.position.lerpVectors(fx.fromPos, fx.toPos, e);
         this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, e);
-        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; fx.fromPos.copy(this.camera.position); }
+        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; fx.fromPos.copy(this.camera.position); this.playWarpSfx(false); }
       } else if (fx.stage === 1) {
         this.warpIntensity = fx.t;
         this.camera.position.lerpVectors(fx.fromPos, fx.toTgt.clone().multiplyScalar(1.02), e);
+        if (this.galaxySun) this.galaxySun.scale.setScalar(3.2 + e * 40); // home swells as we dive
         if (fx.t >= 0.5 && !fx.swapped) {
           fx.swapped = true;
+          this.gxFlash = 1;
+          this.playWarpSfx(true);
           this.applyGalaxyScene(false);
+          if (this.galaxySun) this.galaxySun.scale.setScalar(3.2);
           this.camera.position.set(46, 30, 58);
           this.controls.target.set(0, 0, 0);
           fx.fromPos.copy(this.camera.position);
@@ -1995,15 +2035,97 @@ export class SolarEngine {
         if (fx.t >= 1) {
           this.gxTrans = null;
           this.warpIntensity = 0;
+          this.camera.fov = this.savedFov;
+          this.camera.updateProjectionMatrix();
+          this.camera.up.set(0, 1, 0);
           this.controls.enabled = true;
           this.toast(STR[this.lang].toast.galaxyOff);
           this.emitSnapshot();
         }
       }
     }
+
+    // cinematic dressing — fov kick + gentle bank while the warp runs
+    if (this.gxTrans) {
+      this.camera.fov = this.savedFov + this.warpIntensity * 22;
+      this.camera.updateProjectionMatrix();
+      const roll = this.warpIntensity * 0.06 * (fx.dir === 'toGalaxy' ? 1 : -1);
+      this.camera.up.set(Math.sin(roll), Math.cos(roll), 0);
+    }
   }
 
-  // screen-space star-streak warp ("星河流转") on a 2D overlay canvas
+  // 3D streak tunnel — real geometry flying past the camera during the warp
+  private ensureWarpTunnel() {
+    if (this.warpGroup) return;
+    const N = 480;
+    const pos = new Float32Array(N * 2 * 3);
+    const col = new Float32Array(N * 2 * 3);
+    for (let i = 0; i < N; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 5 + Math.pow(Math.random(), 0.7) * 42;
+      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      const z = -20 + Math.random() * 440;
+      const v = 0.6 + Math.random() * 0.9;
+      this.warpMeta.push({ x, y, z, v });
+      const warm = Math.random();
+      const cr = warm < 0.72 ? 0.75 : warm < 0.9 ? 0.55 : 1.0;
+      const cg = warm < 0.72 ? 0.86 : warm < 0.9 ? 0.78 : 0.86;
+      const cb = warm < 0.72 ? 1.0 : warm < 0.9 ? 1.0 : 0.75;
+      col.set([cr, cg, cb, cr * 0.15, cg * 0.15, cb * 0.15], i * 6);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const mat = new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    });
+    this.warpGroup = new THREE.LineSegments(geo, mat);
+    this.warpGroup.frustumCulled = false;
+    this.warpGroup.visible = false;
+    this.scene.add(this.warpGroup);
+  }
+
+  private updateWarpTunnel(dt: number) {
+    const wg = this.warpGroup;
+    if (!wg) return;
+    const w = this.warpIntensity;
+    if (w <= 0.01) { wg.visible = false; return; }
+    wg.visible = true;
+    (wg.material as THREE.LineBasicMaterial).opacity = Math.min(1, w * 1.15);
+    // ride the camera's view axis so the streaks stream past in true 3D
+    wg.position.copy(this.camera.position);
+    const look = this.controls.target.clone().sub(this.camera.position);
+    if (look.lengthSq() < 1e-6) look.set(0, 0, 1);
+    wg.lookAt(this.camera.position.clone().add(look));
+    const attr = wg.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const arr = attr.array as Float32Array;
+    const speed = (140 + 260 * w) * dt;
+    const len = 2 + w * 26;
+    for (let i = 0; i < this.warpMeta.length; i++) {
+      const m = this.warpMeta[i];
+      m.z -= speed * m.v;           // ahead is +z; streaks dive toward the camera
+      if (m.z < -25) m.z = 420;     // …and recycle far ahead
+      const j = i * 6;
+      arr[j] = m.x; arr[j + 1] = m.y; arr[j + 2] = m.z;
+      arr[j + 3] = m.x; arr[j + 4] = m.y; arr[j + 5] = m.z + len * m.v; // trailing tail
+    }
+    attr.needsUpdate = true;
+  }
+
+  // warp audio garnish — a riser at jump start, a boom at the scene swap
+  private playWarpSfx(boom: boolean) {
+    if (!this.ambience.isOn) return;
+    try {
+      const a = boom ? (this.warpSfxBoom ??= new Audio('/sfx/warp-boom.mp3'))
+                     : (this.warpSfxWhoosh ??= new Audio('/sfx/warp-whoosh.mp3'));
+      a.currentTime = 0;
+      a.volume = boom ? 0.7 : 0.55;
+      void a.play().catch(() => { /* autoplay policies may say no — fine */ });
+    } catch { /* audio is garnish — never break the flight */ }
+  }
+
+  // warp overlay canvas — white flash, vignette and the settle veil
   private ensureWarpCanvas() {
     if (this.warpCanvas) return;
     const c = document.createElement('canvas');
@@ -2011,9 +2133,6 @@ export class SolarEngine {
     document.body.appendChild(c);
     this.warpCanvas = c;
     this.warpCtx = c.getContext('2d');
-    for (let i = 0; i < 110; i++) {
-      this.warpSeeds.push({ a: Math.random() * Math.PI * 2, r: Math.random(), v: 0.6 + Math.random() * 0.9, hue: Math.random() });
-    }
   }
 
   private drawWarp(dt: number) {
@@ -2028,25 +2147,20 @@ export class SolarEngine {
       ctx.fillStyle = `rgba(0,0,0,${this.gxVeil.toFixed(3)})`;
       ctx.fillRect(0, 0, c.width, c.height);
     }
-    if (this.warpIntensity <= 0.01) return;
-    const cx = c.width / 2, cy = c.height / 2, maxR = Math.hypot(cx, cy);
-    const swirl = this.pulseT * 0.3;
-    for (const sd of this.warpSeeds) {
-      sd.r += dt * sd.v * this.warpIntensity * 1.7;
-      if (sd.r > 1) { sd.r = 0.02; sd.a = Math.random() * Math.PI * 2; }
-      const a = sd.a + swirl * (0.3 + sd.r * 0.6);
-      const r1 = sd.r * maxR;
-      const len = (0.05 + this.warpIntensity * 0.4) * maxR * sd.v * sd.r;
-      const r0 = Math.max(0, r1 - len);
-      const alpha = this.warpIntensity * Math.min(1, sd.r * 2) * 0.8;
-      ctx.strokeStyle = sd.hue < 0.7
-        ? `rgba(190,220,255,${alpha})`
-        : sd.hue < 0.9 ? `rgba(140,200,255,${alpha})` : `rgba(255,220,190,${alpha})`;
-      ctx.lineWidth = 1 + sd.v;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
-      ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-      ctx.stroke();
+    // exposure pulse at the scene swap
+    if (this.gxFlash > 0.004) {
+      ctx.fillStyle = `rgba(235,242,255,${(this.gxFlash * 0.9).toFixed(3)})`;
+      ctx.fillRect(0, 0, c.width, c.height);
+      this.gxFlash = Math.max(0, this.gxFlash - dt * 2.2);
+    }
+    // vignette closes in with warp intensity
+    if (this.warpIntensity > 0.01) {
+      const cx = c.width / 2, cy = c.height / 2;
+      const grad = ctx.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.35, cx, cy, Math.hypot(cx, cy));
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, `rgba(0,0,0,${(this.warpIntensity * 0.45).toFixed(3)})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, c.width, c.height);
     }
   }
 
@@ -3367,10 +3481,11 @@ export class SolarEngine {
     }
     if (this.galaxy && this.galaxyGroup) {
       this.galaxyGroup.rotation.y += dt * 0.012; // gentle, perceptible drift
-      if (this.galaxySun) this.galaxySun.scale.setScalar(3.2 + Math.sin(this.pulseT * 3) * 0.9);
+      if (this.galaxySun && !this.gxTrans) this.galaxySun.scale.setScalar(3.2 + Math.sin(this.pulseT * 3) * 0.9);
       if (!this.gxTrans) this.updateGalaxyLabels();
     }
     this.updateGxTransition(dt);
+    this.updateWarpTunnel(dt);
     this.drawWarp(dt);
     this.updateCometTrail();
     this.updateProbe();
