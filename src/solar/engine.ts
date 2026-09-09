@@ -118,6 +118,10 @@ interface Tween {
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
+// anchor-relay transition constants
+const GX_SUN_WIN: [number, number] = [0.26, 0.45]; // the Sun shrinks into the star you keep watching
+const GX_ORIGIN = new THREE.Vector3();             // the anchor the gaze never leaves
+
 // atmosphere rim settings per planet
 const ATMO: Record<string, { color: number; k: number; scale: number }> = {
   earth:   { color: 0x6fb7ff, k: 0.62, scale: 1.16 },
@@ -173,19 +177,22 @@ export class SolarEngine {
   private galaxyLabelsOn = true;
   private galaxySun: THREE.Sprite | null = null;
   private gxTrans: {
-    dir: 'toGalaxy' | 'toSolar'; stage: 0 | 1 | 2; t: number;
-    fromPos: THREE.Vector3; toPos: THREE.Vector3;
-    fromTgt: THREE.Vector3; toTgt: THREE.Vector3;
-    arrPos: THREE.Vector3; swapped: boolean;
+    dir: 'toGalaxy' | 'toSolar'; t: number; dur: number;
+    fromPos: THREE.Vector3; midPos: THREE.Vector3; arrPos: THREE.Vector3;
+    fromTgt: THREE.Vector3;
+    swapped: boolean; whooshed: boolean; boomed: boolean;
   } | null = null;
   private warpCanvas: HTMLCanvasElement | null = null;
   private warpCtx: CanvasRenderingContext2D | null = null;
-  private warpIntensity = 0;
-  private warpGroup: THREE.LineSegments | null = null; // 3D streak tunnel
-  private warpMeta: Array<{ x: number; y: number; z: number; v: number }> = [];
-  private gxFlash = 0;         // white exposure pulse at the scene swap
-  private savedFov = 55;       // camera fov before the warp kick
-  private destPos = new THREE.Vector3(); // mini-galaxy rendezvous point (toGalaxy)
+  private warpIntensity = 0;   // zoom bump: vignette + dust shell + light pulse
+  private gxFlash = 0;         // exposure pulse at the crossing point
+  private savedFov = 55;       // camera fov before the zoom kick
+  private gxSunK = 1;          // sun shrink factor for the anchor handoff
+  private gxFadeO: Array<{ mat: THREE.Material; base: number; win: [number, number] }> = [];
+  private gxFadeS: Array<{ obj: THREE.Object3D; base: number; win: [number, number] }> = [];
+  private gxLayers: Array<{ mat: THREE.Material; base: number; win: [number, number]; u: { value: number } | null }> = [];
+  private dustShell: THREE.Points | null = null; // near-field parallax dust (replaces the tunnel)
+  private dustMeta: Array<{ x: number; y: number; z: number; v: number }> = [];
   private warpSfxWhoosh: HTMLAudioElement | null = null;
   private warpSfxBoom: HTMLAudioElement | null = null;
   private globeMarkers: THREE.Mesh[] = [];
@@ -1682,24 +1689,44 @@ export class SolarEngine {
       count: number, size: number, opacity: number,
       sampler: () => number[],
       colorize: () => [number, number, number],
-      opts?: { blending?: THREE.Blending; renderOrder?: number },
+      opts?: { blending?: THREE.Blending; renderOrder?: number; win?: [number, number] },
     ) => {
       const pos = new Float32Array(count * 3);
       const col = new Float32Array(count * 3);
+      const dist = new Float32Array(count);
       for (let i = 0; i < count; i++) {
         const smp = sampler();
         const dim = smp.length > 4 ? smp[4] : 1;
         pos[i * 3] = smp[0]; pos[i * 3 + 1] = smp[1]; pos[i * 3 + 2] = smp[2];
+        dist[i] = Math.min(1, Math.hypot(smp[0], smp[1], smp[2]) / 60); // anchor distance, normalized
         const [cr, cg, cb] = colorize();
         col[i * 3] = cr * dim; col[i * 3 + 1] = cg * dim; col[i * 3 + 2] = cb * dim;
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      const mat = new THREE.PointsMaterial({
         size, vertexColors: true, transparent: true, opacity, depthWrite: false,
         map: glowTex, blending: opts?.blending ?? THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
-      }));
+      });
+      let u: { value: number } | null = null;
+      if (opts?.win) {
+        // radial reveal wavefront: the layer blooms outward from the anchor point
+        geo.setAttribute('aDist', new THREE.BufferAttribute(dist, 1));
+        u = { value: 1 };
+        const uu = u;
+        mat.onBeforeCompile = (sh) => {
+          sh.uniforms.uReveal = uu;
+          sh.vertexShader = sh.vertexShader
+            .replace('#include <common>', '#include <common>\nattribute float aDist; varying float vDist;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDist = aDist;');
+          sh.fragmentShader = sh.fragmentShader
+            .replace('#include <common>', '#include <common>\nuniform float uReveal; varying float vDist;')
+            .replace('#include <color_fragment>', '#include <color_fragment>\n{ float rw = clamp((uReveal - vDist * 0.75) / 0.25, 0.0, 1.0); diffuseColor.a *= rw * rw * (3.0 - 2.0 * rw); }');
+        };
+        this.gxLayers.push({ mat, base: opacity, win: opts.win, u });
+      }
+      const pts = new THREE.Points(geo, mat);
       if (opts?.renderOrder) pts.renderOrder = opts.renderOrder;
       g.add(pts);
     };
@@ -1712,6 +1739,7 @@ export class SolarEngine {
     }));
     haloGlow.scale.setScalar(170);
     g.add(haloGlow);
+    this.gxLayers.push({ mat: haloGlow.material as THREE.SpriteMaterial, base: 0.16, win: [0.46, 0.64], u: null });
     cloud(70, 1.5, 0.9, () => {
       const rr = 26 + Math.random() * 42;
       const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
@@ -1719,7 +1747,7 @@ export class SolarEngine {
     }, () => {
       const b = 0.85 + Math.random() * 0.5;
       return [b, b * 0.95, b * 0.85];
-    });
+    }, { win: [0.48, 0.66] });
 
     // 2) disk base fog — fills the inter-arm voids so the galaxy reads as one body
     cloud(520, 11, 0.045, () => {
@@ -1727,7 +1755,7 @@ export class SolarEngine {
       const r = 3 + t * R_MAX;
       const a = Math.random() * Math.PI * 2;
       return [Math.cos(a) * r, (Math.random() - 0.5) * 1.6, Math.sin(a) * r, t];
-    }, () => [0.55, 0.64, 0.85]);
+    }, () => [0.55, 0.64, 0.85], { win: [0.50, 0.68] });
 
     // 3) dust lanes — subtle dark veils, inner two rings only (rendered last, normal blending)
     cloud(170, 3.6, 0.3, () => {
@@ -1737,18 +1765,18 @@ export class SolarEngine {
       const r = r0 + t * (R_MAX - r0);
       const ang = BAR_ANG + (arm / ARMS) * Math.PI * 2 + Math.log(r / 4) * WIND - 0.14 + (Math.random() - 0.5) * 0.08;
       return [Math.cos(ang) * r, (Math.random() - 0.5) * 0.9, Math.sin(ang) * r, t];
-    }, () => [0.02, 0.025, 0.045], { blending: THREE.NormalBlending, renderOrder: 10 });
+    }, () => [0.02, 0.025, 0.045], { blending: THREE.NormalBlending, renderOrder: 10, win: [0.66, 0.84] });
 
     // 4) milky nebula veils (thickened) — continuous fog volume along the arms
-    cloud(420, 11, 0.07, () => armSample(1.35), () => [0.6, 0.7, 0.92]);
-    cloud(720, 6.0, 0.1, () => armSample(1.0), () => [0.66, 0.76, 0.95]);
-    cloud(950, 3.0, 0.115, () => armSample(0.62), () => [0.72, 0.8, 0.98]);
+    cloud(420, 11, 0.07, () => armSample(1.35), () => [0.6, 0.7, 0.92], { win: [0.54, 0.74] });
+    cloud(720, 6.0, 0.1, () => armSample(1.0), () => [0.66, 0.76, 0.95], { win: [0.57, 0.77] });
+    cloud(950, 3.0, 0.115, () => armSample(0.62), () => [0.72, 0.8, 0.98], { win: [0.60, 0.80] });
 
     // 5) ridge star band — dense bright pinpoints that keep the arms sharp
     cloud(9000, 0.5, 1.0, () => armSample(0.2), () => {
       const b = 0.9 + Math.random() * 0.5;
       return [0.85 * b, 0.92 * b, b];
-    });
+    }, { win: [0.62, 0.82] });
 
     // 6) discrete star backdrop across all populations
     cloud(35000, 0.34, 0.9, () => {
@@ -1759,11 +1787,11 @@ export class SolarEngine {
     }, () => {
       const b = 0.75 + Math.random() * 0.45;
       return Math.random() < 0.75 ? [0.75 * b, 0.85 * b, b] : [b, 0.85 * b, 0.66 * b];
-    });
+    }, { win: [0.58, 0.80] });
 
     // 7) central bar (short & chunky) + warm bulge haze
-    cloud(300, 5.5, 0.13, () => barSample(), () => [1.0, 0.85, 0.6]);
-    cloud(140, 4.2, 0.12, () => bulgeSample(), () => [1.0, 0.87, 0.65]);
+    cloud(300, 5.5, 0.13, () => barSample(), () => [1.0, 0.85, 0.6], { win: [0.70, 0.86] });
+    cloud(140, 4.2, 0.12, () => bulgeSample(), () => [1.0, 0.87, 0.65], { win: [0.72, 0.88] });
 
     // 8) pink H II star-forming knots — clustered along the outer arm edges
     const hiiCenters: Array<[number, number, number]> = [];
@@ -1774,7 +1802,7 @@ export class SolarEngine {
     cloud(1400, 0.85, 0.6, () => {
       const c = hiiCenters[(Math.random() * hiiCenters.length) | 0];
       return [c[0] + this.gauss() * 0.5, c[1] + this.gauss() * 0.2, c[2] + this.gauss() * 0.5, 0];
-    }, () => [1.0, 0.4 + Math.random() * 0.18, 0.6]);
+    }, () => [1.0, 0.4 + Math.random() * 0.18, 0.6], { win: [0.76, 0.90] });
 
     // 5) luminous galactic core — stacked golden glows
     const coreTex = glowSprite('rgba(255,238,200,1)', 'rgba(255,180,90,0.35)');
@@ -1785,10 +1813,11 @@ export class SolarEngine {
       }));
       sp.scale.setScalar(sc);
       g.add(sp);
+      this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base: op, win: [0.82, 0.96], u: null });
     }
 
     // markers + labels
-    const marker = (p: [number, number, number], color: string, scale: number) => {
+    const marker = (p: [number, number, number], color: string, scale: number, win?: [number, number]) => {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glowSprite(color, 'rgba(0,0,0,0)'),
         blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
@@ -1796,6 +1825,7 @@ export class SolarEngine {
       sp.position.set(p[0], p[1], p[2]);
       sp.scale.setScalar(scale);
       g.add(sp);
+      if (win) this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base: 1, win, u: null });
       return sp;
     };
     const addLabel = (obj: THREE.Object3D, name: string, nameCn: string, extra?: Partial<{ poi: GalaxyPoi; isSun: boolean }>) => {
@@ -1810,12 +1840,12 @@ export class SolarEngine {
     };
 
     // the Sun — clickable, rides home
-    this.galaxySun = marker(GALAXY_SUN_POS, 'rgba(127,220,255,1)', 3.2);
+    this.galaxySun = marker(GALAXY_SUN_POS, 'rgba(127,220,255,1)', 3.2, [0.78, 0.90]);
     addLabel(this.galaxySun, GALAXY_SUN_LABEL.name, GALAXY_SUN_LABEL.nameCn, { isSun: true });
 
     // points of interest
     for (const poi of GALAXY_POIS) {
-      const sp = marker(poi.pos, poi.color, poi.id === 'sgra' ? 4.5 : 2.2);
+      const sp = marker(poi.pos, poi.color, poi.id === 'sgra' ? 4.5 : 2.2, [0.80, 0.92]);
       addLabel(sp, poi.name, poi.nameCn, { poi });
     }
 
@@ -1852,26 +1882,28 @@ export class SolarEngine {
     if (!this.galaxyGroup) this.buildGalaxy();
     this.ensureWarpCanvas();
 
-    // stage 0: pull away from the solar system along the current view direction
+    // one continuous pull-back: watch home shrink to a star — the galaxy blooms around it
     this.controls.enabled = false;
-    const dir = this.camera.position.clone().sub(this.controls.target);
-    if (dir.lengthSq() < 1e-6) dir.set(0.5, 0.4, 0.75);
-    dir.normalize();
-    this.gxTrans = {
-      dir: 'toGalaxy', stage: 0, t: 0, swapped: false,
-      fromPos: this.camera.position.clone(),
-      toPos: dir.clone().multiplyScalar(620),
-      fromTgt: this.controls.target.clone(),
-      toTgt: new THREE.Vector3(0, 0, 0),
-      arrPos: new THREE.Vector3(36, 40, 47),
-    };
-    // destination stand-in: the real galaxy group, shrunken, parked far ahead
     this.savedFov = this.camera.fov;
-    this.destPos.copy(this.gxTrans.toPos).addScaledVector(dir, 300);
-    this.galaxyGroup!.position.copy(this.destPos);
-    this.galaxyGroup!.scale.setScalar(0.02);
-    this.galaxyGroup!.visible = true;
-    this.ensureWarpTunnel();
+    const fromPos = this.camera.position.clone();
+    if (fromPos.lengthSq() < 1e-6) fromPos.set(30, 20, 40);
+    const midPos = fromPos.clone().normalize().multiplyScalar(Math.max(120, fromPos.length() * 1.9));
+    midPos.y = Math.max(midPos.y, 50);
+    this.gxTrans = {
+      dir: 'toGalaxy', t: 0, dur: 8,
+      fromPos, midPos,
+      arrPos: new THREE.Vector3(36, 40, 47),
+      fromTgt: this.controls.target.clone(),
+      swapped: false, whooshed: false, boomed: false,
+    };
+    this.collectGxFade();
+    // the galaxy waits in the wings at origin — every layer dark for now
+    const gg = this.galaxyGroup!;
+    gg.position.set(0, 0, 0);
+    gg.scale.setScalar(1.08);
+    gg.visible = true;
+    for (const L of this.gxLayers) { L.mat.opacity = 0; if (L.u) L.u.value = 0; }
+    this.ensureDustShell();
     this.toast(t.toast.galaxyOn);
     this.emitSnapshot();
   }
@@ -1887,32 +1919,31 @@ export class SolarEngine {
     this.emitSnapshot();
   }
 
-  // easter egg: click the Sun marker — locate it, dive in through the warp, ride home
+  // easter egg: click the Sun marker — one continuous dive home through the star sea
   returnToSolarSystem() {
     if (!this.galaxy || this.gxTrans) return;
     this.galaxyObserve = false;
-    const sunPos = new THREE.Vector3(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1], GALAXY_SUN_POS[2]);
     this.controls.enabled = false;
     this.ensureWarpCanvas();
-    this.ensureWarpTunnel();
+    this.ensureDustShell();
     this.savedFov = this.camera.fov;
-    const away = this.camera.position.clone().sub(sunPos);
-    if (away.lengthSq() < 1e-6) away.set(1, 0.6, 1);
-    away.normalize();
     const v0 = VIEWS[0];
     const arrPos = new THREE.Vector3(
       Math.cos(v0.elevation * DEG) * Math.cos(v0.azimuth * DEG),
       Math.sin(v0.elevation * DEG),
       Math.cos(v0.elevation * DEG) * Math.sin(v0.azimuth * DEG),
     ).multiplyScalar(v0.distance);
+    const fromPos = this.camera.position.clone();
+    if (fromPos.lengthSq() < 1e-6) fromPos.set(36, 40, 47);
+    const midPos = fromPos.clone().normalize().multiplyScalar(7); // skim past the newborn Sun
+    midPos.y += 2;
     this.gxTrans = {
-      dir: 'toSolar', stage: 0, t: 0, swapped: false,
-      fromPos: this.camera.position.clone(),
-      toPos: sunPos.clone().addScaledVector(away, 55), // swing to face the Sun marker
+      dir: 'toSolar', t: 0, dur: 7,
+      fromPos, midPos, arrPos,
       fromTgt: this.controls.target.clone(),
-      toTgt: sunPos,
-      arrPos,
+      swapped: false, whooshed: false, boomed: false,
     };
+    this.collectGxFade();
     this.toast(STR[this.lang].toast.galReturning);
     this.emitSnapshot();
   }
@@ -1921,7 +1952,7 @@ export class SolarEngine {
     const g = this.galaxy!;
     if (on) {
       for (const o of this.scene.children) {
-        if (o === this.galaxyGroup || o === this.warpGroup) continue;
+        if (o === this.galaxyGroup || o === this.dustShell) continue;
         g.hidden.push({ o, v: o.visible });
         o.visible = false;
       }
@@ -1949,181 +1980,167 @@ export class SolarEngine {
     }
   }
 
-  // warp transition state machine — both directions share three stages:
-  // travel → star-streak warp (scene swap at peak) → arrive & settle
+  // anchor-relay transition — one continuous timeline per direction:
+  // watch home shrink to a star → sail the star sea → the galaxy blooms open.
+  // m = "galaxy-ness": every element owns a window; toSolar mirrors it around t=0.5.
   private updateGxTransition(dt: number) {
     const fx = this.gxTrans;
     if (!fx) return;
-    const durs = fx.dir === 'toGalaxy' ? [2.0, 1.6, 2.2] : [1.5, 1.6, 2.2];
-    fx.t = Math.min(1, fx.t + dt / durs[fx.stage]);
-    const e = fx.t * fx.t * (3 - 2 * fx.t); // smoothstep
+    fx.t = Math.min(1, fx.t + dt / fx.dur);
+    const t = fx.t;
+    const toGal = fx.dir === 'toGalaxy';
+    const ssw = (a: number, b: number) => {
+      const k = THREE.MathUtils.clamp((t - a) / (b - a), 0, 1);
+      return k * k * (3 - 2 * k);
+    };
+    const m = (win: [number, number]) => (toGal ? ssw(win[0], win[1]) : 1 - ssw(1 - win[1], 1 - win[0]));
 
-    if (fx.dir === 'toGalaxy') {
-      if (fx.stage === 0) {
-        this.camera.position.lerpVectors(fx.fromPos, fx.toPos, e);
-        // two beats: watch home shrink away, then turn to face the far galaxy
-        if (fx.t < 0.55) {
-          this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, Math.min(1, fx.t / 0.55));
-        } else {
-          const e2 = (fx.t - 0.55) / 0.45;
-          this.controls.target.lerpVectors(fx.toTgt, this.destPos, e2 * e2 * (3 - 2 * e2));
-        }
-        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; this.playWarpSfx(false); }
-      } else if (fx.stage === 1) {
-        this.warpIntensity = fx.t;
-        // the destination galaxy swells up and swallows the camera
-        // (frozen after the swap — the real galaxy scene owns the transform then)
-        if (!fx.swapped) {
-          this.camera.position.lerpVectors(fx.toPos, this.destPos, fx.t * 0.12); // never parked
-          const gg = this.galaxyGroup!;
-          const ge = fx.t * fx.t;
-          gg.position.lerpVectors(this.destPos, this.camera.position, ge * 0.96);
-          gg.scale.setScalar(0.02 + ge * 4);
-        }
-        if (fx.t >= 0.5 && !fx.swapped) {
-          fx.swapped = true;
-          this.gxFlash = 1;
-          this.playWarpSfx(true);
-          this.applyGalaxyScene(true);
-          // land INSIDE the core glow, still facing the way we flew — no cut,
-          // stage 2 lifts us out of the light into the overview
-          const fly = this.controls.target.clone().sub(this.camera.position);
-          if (fly.lengthSq() < 1e-6) fly.set(0.3, -0.5, 0.8);
-          fly.normalize();
-          this.camera.position.set(-fly.x * 6, 2, -fly.z * 6);
-          this.controls.target.copy(this.camera.position).addScaledVector(fly, 10);
-          fx.fromPos.copy(this.camera.position);
-          fx.fromTgt.copy(this.controls.target);
-        }
-        if (fx.t >= 1) { fx.stage = 2; fx.t = 0; }
+    // scene crossfade — the solar system dissolves, the galaxy blooms
+    for (const f of this.gxFadeO) f.mat.opacity = f.base * (1 - m(f.win));
+    for (const f of this.gxFadeS) f.obj.scale.setScalar(f.base * Math.max(0.01, 1 - m(f.win)));
+    for (const L of this.gxLayers) {
+      const k = m(L.win);
+      L.mat.opacity = L.base * k;
+      if (L.u) L.u.value = k;
+    }
+    // …and the Sun itself becomes the star you keep watching
+    this.gxSunK = Math.max(0.02, 1 - m(GX_SUN_WIN));
+    this.sun.scale.setScalar(this.gxSunK);
+    this.galaxyGroup!.scale.setScalar(toGal ? 1.08 - 0.08 * ssw(0.15, 1) : 1 + 0.06 * ssw(0, 0.5));
+
+    // camera: one continuous bezier ride, gaze never leaves the anchor
+    const e = easeInOut(t);
+    const om = 1 - e;
+    this.camera.position.set(
+      om * om * fx.fromPos.x + 2 * om * e * fx.midPos.x + e * e * fx.arrPos.x,
+      om * om * fx.fromPos.y + 2 * om * e * fx.midPos.y + e * e * fx.arrPos.y,
+      om * om * fx.fromPos.z + 2 * om * e * fx.midPos.z + e * e * fx.arrPos.z,
+    );
+    this.controls.target.lerpVectors(fx.fromTgt, GX_ORIGIN, ssw(0, 0.25));
+
+    // the crossing: bookkeeping swaps while the eye is at peak exposure
+    if (t >= 0.5 && !fx.swapped) {
+      fx.swapped = true;
+      this.gxFlash = 1;
+      if (toGal) {
+        this.applyGalaxyScene(true);
       } else {
-        this.warpIntensity = 1 - fx.t;
-        this.gxVeil = 0.4 * (1 - e); // galaxy fades up from dim — like eyes adapting
-        this.camera.position.lerpVectors(fx.fromPos, fx.arrPos, e);
-        this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, e); // gaze settles on the core
-        if (fx.t >= 1) {
-          this.gxTrans = null;
-          this.warpIntensity = 0;
-          this.gxVeil = 0;
-          this.camera.fov = this.savedFov;
-          this.camera.updateProjectionMatrix();
-          this.camera.up.set(0, 1, 0);
-          this.controls.enabled = true;
-          this.emitSnapshot();
-        }
-      }
-    } else {
-      if (fx.stage === 0) {
-        // locate home: swing the view onto the Sun marker
-        this.camera.position.lerpVectors(fx.fromPos, fx.toPos, e);
-        this.controls.target.lerpVectors(fx.fromTgt, fx.toTgt, e);
-        if (fx.t >= 1) { fx.stage = 1; fx.t = 0; fx.fromPos.copy(this.camera.position); this.playWarpSfx(false); }
-      } else if (fx.stage === 1) {
-        this.warpIntensity = fx.t;
-        this.camera.position.lerpVectors(fx.fromPos, fx.toTgt.clone().multiplyScalar(1.02), e);
-        if (this.galaxySun) this.galaxySun.scale.setScalar(3.2 + e * 40); // home swells as we dive
-        if (fx.t >= 0.5 && !fx.swapped) {
-          fx.swapped = true;
-          this.gxFlash = 1;
-          this.playWarpSfx(true);
-          this.applyGalaxyScene(false);
-          if (this.galaxySun) this.galaxySun.scale.setScalar(3.2);
-          // materialize right beside the Sun, still facing it — the same star
-          // we were diving at, now real; stage 2 glides out to the default seat
-          const fly = this.controls.target.clone().sub(this.camera.position);
-          if (fly.lengthSq() < 1e-6) fly.set(-0.6, 0.3, 0.7);
-          fly.normalize();
-          this.camera.position.copy(fly).multiplyScalar(-4.5);
-          this.camera.position.y += 1.5;
-          this.controls.target.set(0, 0, 0);
-          fx.fromPos.copy(this.camera.position);
-          const g = this.galaxy!;
-          if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
-          this.galaxy = null;
-          this.galaxyObserve = false;
-          this.emitSnapshot();
-        }
-        if (fx.t >= 1) { fx.stage = 2; fx.t = 0; }
-      } else {
-        this.warpIntensity = 1 - fx.t;
-        this.camera.position.lerpVectors(fx.fromPos, fx.arrPos, e);
-        if (fx.t >= 1) {
-          this.gxTrans = null;
-          this.warpIntensity = 0;
-          this.camera.fov = this.savedFov;
-          this.camera.updateProjectionMatrix();
-          this.camera.up.set(0, 1, 0);
-          this.controls.enabled = true;
-          this.toast(STR[this.lang].toast.galaxyOff);
-          this.emitSnapshot();
-        }
+        this.applyGalaxyScene(false);
+        const g = this.galaxy!;
+        if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
+        this.galaxy = null;
+        this.galaxyObserve = false;
+        this.emitSnapshot();
       }
     }
+    if (!fx.whooshed && t >= 0.4) { fx.whooshed = true; this.playWarpSfx(false); }
+    const boomAt = toGal ? 0.84 : 0.56; // the heart ignites / home ignites
+    if (!fx.boomed && t >= boomAt) { fx.boomed = true; this.playWarpSfx(true); }
 
-    // cinematic dressing — fov kick + gentle bank while the warp runs
-    if (this.gxTrans) {
-      this.camera.fov = this.savedFov + this.warpIntensity * 22;
+    // cinematic dressing — a gentle fov kick + a whisper of roll at peak zoom
+    const bump = ssw(0.3, 0.55) * (1 - ssw(0.55, 0.8));
+    this.warpIntensity = bump;
+    this.camera.fov = this.savedFov + bump * 8;
+    this.camera.updateProjectionMatrix();
+    const roll = bump * 0.03 * (toGal ? 1 : -1);
+    this.camera.up.set(Math.sin(roll), Math.cos(roll), 0);
+    this.gxVeil = t > 0.82 ? 0.3 * (1 - ssw(0.82, 1)) : 0; // eyes adapting on arrival
+
+    if (t >= 1) {
+      this.gxTrans = null;
+      this.warpIntensity = 0;
+      this.gxVeil = 0;
+      this.camera.fov = this.savedFov;
       this.camera.updateProjectionMatrix();
-      const roll = this.warpIntensity * 0.06 * (fx.dir === 'toGalaxy' ? 1 : -1);
-      this.camera.up.set(Math.sin(roll), Math.cos(roll), 0);
+      this.camera.up.set(0, 1, 0);
+      this.controls.enabled = true;
+      this.gxSunK = 1;
+      this.sun.scale.setScalar(1);
+      // leave nothing half-dissolved: exiting the galaxy later must find
+      // the solar system whole again (it is hidden, so restore for free)
+      for (const f of this.gxFadeO) f.mat.opacity = f.base;
+      for (const f of this.gxFadeS) f.obj.scale.setScalar(f.base);
+      if (toGal) for (const L of this.gxLayers) { L.mat.opacity = L.base; if (L.u) L.u.value = 1; }
+      else this.toast(STR[this.lang].toast.galaxyOff);
+      this.emitSnapshot();
     }
   }
 
-  // 3D streak tunnel — real geometry flying past the camera during the warp
-  private ensureWarpTunnel() {
-    if (this.warpGroup) return;
-    const N = 480;
-    const pos = new Float32Array(N * 2 * 3);
-    const col = new Float32Array(N * 2 * 3);
+  // gather everything the solar-side dissolve touches, each with its window
+  private collectGxFade() {
+    this.gxFadeO = [];
+    this.gxFadeS = [];
+    const seen = new Set<THREE.Material>();
+    const pushO = (mat: THREE.Material | undefined, win: [number, number]) => {
+      if (!mat || seen.has(mat)) return;
+      seen.add(mat);
+      mat.transparent = true;
+      this.gxFadeO.push({ mat, base: mat.opacity, win });
+    };
+    for (const l of this.orbitLines) pushO(l.material as THREE.Material, [0.08, 0.22]);
+    if (this.sky) pushO((this.sky as THREE.Mesh).material as THREE.Material, [0.10, 0.28]);
+    this.belt.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
+    if (this.sunGlow1) pushO(this.sunGlow1.material as THREE.Material, [0.20, 0.40]);
+    if (this.sunGlow2) pushO(this.sunGlow2.material as THREE.Material, [0.22, 0.42]);
+    // a farewell in distance order — the outer worlds leave first
+    const ps = [...this.planets].sort((a, b) => b.spec.distance - a.spec.distance);
+    const n = Math.max(1, ps.length - 1);
+    ps.forEach((pl, i) => {
+      const a = 0.14 + 0.2 * (i / n);
+      this.gxFadeS.push({ obj: pl.body, base: pl.body.scale.x, win: [a, a + 0.08] });
+    });
+  }
+
+  // near-field dust shell — the speed cue that replaces the streak tunnel:
+  // a sparse cylinder of motes riding the view axis, drifting past at peak zoom
+  private ensureDustShell() {
+    if (this.dustShell) return;
+    const N = 300;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = 5 + Math.pow(Math.random(), 0.7) * 42;
+      const r = 6 + Math.pow(Math.random(), 0.8) * 32;
       const x = Math.cos(a) * r, y = Math.sin(a) * r;
-      const z = -20 + Math.random() * 440;
-      const v = 0.6 + Math.random() * 0.9;
-      this.warpMeta.push({ x, y, z, v });
-      const warm = Math.random();
-      const cr = warm < 0.72 ? 0.75 : warm < 0.9 ? 0.55 : 1.0;
-      const cg = warm < 0.72 ? 0.86 : warm < 0.9 ? 0.78 : 0.86;
-      const cb = warm < 0.72 ? 1.0 : warm < 0.9 ? 1.0 : 0.75;
-      col.set([cr, cg, cb, cr * 0.15, cg * 0.15, cb * 0.15], i * 6);
+      const z = -15 + Math.random() * 275;
+      const v = 0.5 + Math.random() * 1.0;
+      this.dustMeta.push({ x, y, z, v });
+      pos.set([x, y, z], i * 3);
+      const b = 0.6 + Math.random() * 0.4;
+      col.set([0.75 * b, 0.85 * b, b], i * 3);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const mat = new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0,
-      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    const mat = new THREE.PointsMaterial({
+      size: 0.7, vertexColors: true, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, toneMapped: false,
     });
-    this.warpGroup = new THREE.LineSegments(geo, mat);
-    this.warpGroup.frustumCulled = false;
-    this.warpGroup.visible = false;
-    this.scene.add(this.warpGroup);
+    this.dustShell = new THREE.Points(geo, mat);
+    this.dustShell.frustumCulled = false;
+    this.dustShell.visible = false;
+    this.scene.add(this.dustShell);
   }
 
-  private updateWarpTunnel(dt: number) {
-    const wg = this.warpGroup;
-    if (!wg) return;
+  private updateDustShell(dt: number) {
+    const ds = this.dustShell;
+    if (!ds) return;
     const w = this.warpIntensity;
-    if (w <= 0.01) { wg.visible = false; return; }
-    wg.visible = true;
-    (wg.material as THREE.LineBasicMaterial).opacity = w * w * (3 - 2 * w);
-    // ride the camera's view axis so the streaks stream past in true 3D
-    wg.position.copy(this.camera.position);
+    if (w <= 0.02) { ds.visible = false; return; }
+    ds.visible = true;
+    (ds.material as THREE.PointsMaterial).opacity = w * 0.5;
+    ds.position.copy(this.camera.position);
     const look = this.controls.target.clone().sub(this.camera.position);
     if (look.lengthSq() < 1e-6) look.set(0, 0, 1);
-    wg.lookAt(this.camera.position.clone().add(look));
-    const attr = wg.geometry.getAttribute('position') as THREE.BufferAttribute;
+    ds.lookAt(this.camera.position.clone().add(look));
+    const attr = ds.geometry.getAttribute('position') as THREE.BufferAttribute;
     const arr = attr.array as Float32Array;
-    const speed = (140 + 260 * w) * dt;
-    const len = 2 + w * 26;
-    for (let i = 0; i < this.warpMeta.length; i++) {
-      const m = this.warpMeta[i];
-      m.z -= speed * m.v;           // ahead is +z; streaks dive toward the camera
-      if (m.z < -25) m.z = 420;     // …and recycle far ahead
-      const j = i * 6;
-      arr[j] = m.x; arr[j + 1] = m.y; arr[j + 2] = m.z;
-      arr[j + 3] = m.x; arr[j + 4] = m.y; arr[j + 5] = m.z + len * m.v; // trailing tail
+    const speed = (50 + 130 * w) * dt;
+    for (let i = 0; i < this.dustMeta.length; i++) {
+      const mote = this.dustMeta[i];
+      mote.z -= speed * mote.v;
+      if (mote.z < -18) mote.z = 260;
+      arr[i * 3] = mote.x; arr[i * 3 + 1] = mote.y; arr[i * 3 + 2] = mote.z;
     }
     attr.needsUpdate = true;
   }
@@ -2164,7 +2181,7 @@ export class SolarEngine {
     }
     // exposure pulse at the scene swap
     if (this.gxFlash > 0.004) {
-      ctx.fillStyle = `rgba(235,242,255,${(this.gxFlash * 0.9).toFixed(3)})`;
+      ctx.fillStyle = `rgba(235,242,255,${(this.gxFlash * 0.35).toFixed(3)})`;
       ctx.fillRect(0, 0, c.width, c.height);
       this.gxFlash = Math.max(0, this.gxFlash - dt * 2.2);
     }
@@ -3509,7 +3526,7 @@ export class SolarEngine {
       this.updateGalaxyLabels(); // its own guard hides labels off-mode / mid-transition
     }
     this.updateGxTransition(dt);
-    this.updateWarpTunnel(dt);
+    this.updateDustShell(dt);
     this.drawWarp(dt);
     this.updateCometTrail();
     this.updateProbe();
@@ -3533,8 +3550,8 @@ export class SolarEngine {
 
     // solar corona breathing
     this.pulseT += dt;
-    if (this.sunGlow1) this.sunGlow1.scale.setScalar(SUN_RADIUS * 4.2 * (1 + 0.03 * Math.sin(this.pulseT * 1.7)));
-    if (this.sunGlow2) this.sunGlow2.scale.setScalar(SUN_RADIUS * 8.5 * (1 + 0.05 * Math.sin(this.pulseT * 0.9 + 1.3)));
+    if (this.sunGlow1) this.sunGlow1.scale.setScalar(SUN_RADIUS * 4.2 * (1 + 0.03 * Math.sin(this.pulseT * 1.7)) * this.gxSunK);
+    if (this.sunGlow2) this.sunGlow2.scale.setScalar(SUN_RADIUS * 8.5 * (1 + 0.05 * Math.sin(this.pulseT * 0.9 + 1.3)) * this.gxSunK);
 
     // camera modes
     if (this.surface) this.updateSurface();
@@ -3725,7 +3742,7 @@ export class SolarEngine {
     const v = new THREE.Vector3();
     for (const p of this.planets) {
       const el = p.label!;
-      if (this.galaxy) { el.style.opacity = '0'; continue; }
+      if (this.galaxy || this.gxTrans) { el.style.opacity = '0'; continue; }
       if (this.globe && !this.globe.sys.has(p.spec.id)) { el.style.opacity = '0'; continue; }
       p.body.getWorldPosition(v);
       const dist = v.distanceTo(this.camera.position);
