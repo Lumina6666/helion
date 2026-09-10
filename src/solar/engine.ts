@@ -1689,7 +1689,7 @@ export class SolarEngine {
       count: number, size: number, opacity: number,
       sampler: () => number[],
       colorize: () => [number, number, number],
-      opts?: { blending?: THREE.Blending; renderOrder?: number; win?: [number, number] },
+      opts?: { blending?: THREE.Blending; renderOrder?: number; win?: [number, number]; radial?: boolean },
     ) => {
       const pos = new Float32Array(count * 3);
       const col = new Float32Array(count * 3);
@@ -1710,7 +1710,7 @@ export class SolarEngine {
         map: glowTex, blending: opts?.blending ?? THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
       });
       let u: { value: number } | null = null;
-      if (opts?.win) {
+      if (opts?.win && opts?.radial !== false) {
         // radial reveal wavefront: the layer blooms outward from the anchor point
         geo.setAttribute('aDist', new THREE.BufferAttribute(dist, 1));
         u = { value: 1 };
@@ -1722,9 +1722,12 @@ export class SolarEngine {
             .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDist = aDist;');
           sh.fragmentShader = sh.fragmentShader
             .replace('#include <common>', '#include <common>\nuniform float uReveal; varying float vDist;')
-            .replace('#include <color_fragment>', '#include <color_fragment>\n{ float rw = clamp((uReveal - vDist * 0.75) / 0.25, 0.0, 1.0); diffuseColor.a *= rw * rw * (3.0 - 2.0 * rw); }');
+            .replace('#include <color_fragment>', '#include <color_fragment>\n{ float rw = clamp((uReveal - vDist * 0.5) / 0.2, 0.0, 1.0); diffuseColor.a *= rw * rw * (3.0 - 2.0 * rw); }');
         };
         this.gxLayers.push({ mat, base: opacity, win: opts.win, u });
+      } else if (opts?.win) {
+        // flat fade only — fog layers must never clump into a central blob
+        this.gxLayers.push({ mat, base: opacity, win: opts.win, u: null });
       }
       const pts = new THREE.Points(geo, mat);
       if (opts?.renderOrder) pts.renderOrder = opts.renderOrder;
@@ -1739,7 +1742,7 @@ export class SolarEngine {
     }));
     haloGlow.scale.setScalar(170);
     g.add(haloGlow);
-    this.gxLayers.push({ mat: haloGlow.material as THREE.SpriteMaterial, base: 0.16, win: [0.46, 0.64], u: null });
+    this.gxLayers.push({ mat: haloGlow.material as THREE.SpriteMaterial, base: 0.16, win: [0.90, 1.0], u: null });
     cloud(70, 1.5, 0.9, () => {
       const rr = 26 + Math.random() * 42;
       const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
@@ -1755,7 +1758,7 @@ export class SolarEngine {
       const r = 3 + t * R_MAX;
       const a = Math.random() * Math.PI * 2;
       return [Math.cos(a) * r, (Math.random() - 0.5) * 1.6, Math.sin(a) * r, t];
-    }, () => [0.55, 0.64, 0.85], { win: [0.50, 0.68] });
+    }, () => [0.55, 0.64, 0.85], { win: [0.78, 0.97], radial: false });
 
     // 3) dust lanes — subtle dark veils, inner two rings only (rendered last, normal blending)
     cloud(170, 3.6, 0.3, () => {
@@ -1765,18 +1768,18 @@ export class SolarEngine {
       const r = r0 + t * (R_MAX - r0);
       const ang = BAR_ANG + (arm / ARMS) * Math.PI * 2 + Math.log(r / 4) * WIND - 0.14 + (Math.random() - 0.5) * 0.08;
       return [Math.cos(ang) * r, (Math.random() - 0.5) * 0.9, Math.sin(ang) * r, t];
-    }, () => [0.02, 0.025, 0.045], { blending: THREE.NormalBlending, renderOrder: 10, win: [0.66, 0.84] });
+    }, () => [0.02, 0.025, 0.045], { blending: THREE.NormalBlending, renderOrder: 10, win: [0.60, 0.78], radial: false });
 
     // 4) milky nebula veils (thickened) — continuous fog volume along the arms
-    cloud(420, 11, 0.07, () => armSample(1.35), () => [0.6, 0.7, 0.92], { win: [0.54, 0.74] });
-    cloud(720, 6.0, 0.1, () => armSample(1.0), () => [0.66, 0.76, 0.95], { win: [0.57, 0.77] });
-    cloud(950, 3.0, 0.115, () => armSample(0.62), () => [0.72, 0.8, 0.98], { win: [0.60, 0.80] });
+    cloud(420, 11, 0.07, () => armSample(1.35), () => [0.6, 0.7, 0.92], { win: [0.70, 0.92], radial: false });
+    cloud(720, 6.0, 0.1, () => armSample(1.0), () => [0.66, 0.76, 0.95], { win: [0.73, 0.94], radial: false });
+    cloud(950, 3.0, 0.115, () => armSample(0.62), () => [0.72, 0.8, 0.98], { win: [0.76, 0.96], radial: false });
 
     // 5) ridge star band — dense bright pinpoints that keep the arms sharp
     cloud(9000, 0.5, 1.0, () => armSample(0.2), () => {
       const b = 0.9 + Math.random() * 0.5;
       return [0.85 * b, 0.92 * b, b];
-    }, { win: [0.62, 0.82] });
+    }, { win: [0.46, 0.70] });
 
     // 6) discrete star backdrop across all populations
     cloud(35000, 0.34, 0.9, () => {
@@ -1787,11 +1790,11 @@ export class SolarEngine {
     }, () => {
       const b = 0.75 + Math.random() * 0.45;
       return Math.random() < 0.75 ? [0.75 * b, 0.85 * b, b] : [b, 0.85 * b, 0.66 * b];
-    }, { win: [0.58, 0.80] });
+    }, { win: [0.44, 0.68] });
 
     // 7) central bar (short & chunky) + warm bulge haze
-    cloud(300, 5.5, 0.13, () => barSample(), () => [1.0, 0.85, 0.6], { win: [0.70, 0.86] });
-    cloud(140, 4.2, 0.12, () => bulgeSample(), () => [1.0, 0.87, 0.65], { win: [0.72, 0.88] });
+    cloud(300, 5.5, 0.13, () => barSample(), () => [1.0, 0.85, 0.6], { win: [0.52, 0.72] });
+    cloud(140, 4.2, 0.12, () => bulgeSample(), () => [1.0, 0.87, 0.65], { win: [0.54, 0.74] });
 
     // 8) pink H II star-forming knots — clustered along the outer arm edges
     const hiiCenters: Array<[number, number, number]> = [];
@@ -1802,7 +1805,7 @@ export class SolarEngine {
     cloud(1400, 0.85, 0.6, () => {
       const c = hiiCenters[(Math.random() * hiiCenters.length) | 0];
       return [c[0] + this.gauss() * 0.5, c[1] + this.gauss() * 0.2, c[2] + this.gauss() * 0.5, 0];
-    }, () => [1.0, 0.4 + Math.random() * 0.18, 0.6], { win: [0.76, 0.90] });
+    }, () => [1.0, 0.4 + Math.random() * 0.18, 0.6], { win: [0.66, 0.84] });
 
     // 5) luminous galactic core — stacked golden glows
     const coreTex = glowSprite('rgba(255,238,200,1)', 'rgba(255,180,90,0.35)');
@@ -1813,7 +1816,7 @@ export class SolarEngine {
       }));
       sp.scale.setScalar(sc);
       g.add(sp);
-      this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base: op, win: [0.82, 0.96], u: null });
+      this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base: op, win: [0.74, 0.92], u: null });
     }
 
     // markers + labels
@@ -1840,12 +1843,12 @@ export class SolarEngine {
     };
 
     // the Sun — clickable, rides home
-    this.galaxySun = marker(GALAXY_SUN_POS, 'rgba(127,220,255,1)', 3.2, [0.78, 0.90]);
+    this.galaxySun = marker(GALAXY_SUN_POS, 'rgba(127,220,255,1)', 3.2, [0.62, 0.78]);
     addLabel(this.galaxySun, GALAXY_SUN_LABEL.name, GALAXY_SUN_LABEL.nameCn, { isSun: true });
 
     // points of interest
     for (const poi of GALAXY_POIS) {
-      const sp = marker(poi.pos, poi.color, poi.id === 'sgra' ? 4.5 : 2.2, [0.80, 0.92]);
+      const sp = marker(poi.pos, poi.color, poi.id === 'sgra' ? 4.5 : 2.2, [0.70, 0.85]);
       addLabel(sp, poi.name, poi.nameCn, { poi });
     }
 
@@ -1887,8 +1890,8 @@ export class SolarEngine {
     this.savedFov = this.camera.fov;
     const fromPos = this.camera.position.clone();
     if (fromPos.lengthSq() < 1e-6) fromPos.set(30, 20, 40);
-    const midPos = fromPos.clone().normalize().multiplyScalar(Math.max(120, fromPos.length() * 1.9));
-    midPos.y = Math.max(midPos.y, 50);
+    const midPos = fromPos.clone().normalize().multiplyScalar(Math.max(95, fromPos.length() * 1.3));
+    midPos.y = Math.max(midPos.y, 42);
     this.gxTrans = {
       dir: 'toGalaxy', t: 0, dur: 8,
       fromPos, midPos,
@@ -2034,7 +2037,7 @@ export class SolarEngine {
       }
     }
     if (!fx.whooshed && t >= 0.4) { fx.whooshed = true; this.playWarpSfx(false); }
-    const boomAt = toGal ? 0.84 : 0.56; // the heart ignites / home ignites
+    const boomAt = toGal ? 0.80 : 0.56; // the heart ignites / home ignites
     if (!fx.boomed && t >= boomAt) { fx.boomed = true; this.playWarpSfx(true); }
 
     // cinematic dressing — a gentle fov kick + a whisper of roll at peak zoom
@@ -2181,24 +2184,18 @@ export class SolarEngine {
     }
     // exposure pulse at the scene swap
     if (this.gxFlash > 0.004) {
-      ctx.fillStyle = `rgba(235,242,255,${(this.gxFlash * 0.35).toFixed(3)})`;
+      ctx.fillStyle = `rgba(235,242,255,${(this.gxFlash * 0.18).toFixed(3)})`;
       ctx.fillRect(0, 0, c.width, c.height);
       this.gxFlash = Math.max(0, this.gxFlash - dt * 2.2);
     }
-    // vignette closes in with warp intensity, and a core light grows at the
-    // heart of the tunnel — the swap happens while the screen is brightest
+    // vignette only — the tunnel's central glow is gone with the tunnel;
+    // the galaxy itself must carry the scene now, no canvas light blob
     if (this.warpIntensity > 0.01) {
       const cx = c.width / 2, cy = c.height / 2;
       const grad = ctx.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.35, cx, cy, Math.hypot(cx, cy));
       grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, `rgba(0,0,0,${(this.warpIntensity * 0.45).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(0,0,0,${(this.warpIntensity * 0.35).toFixed(3)})`);
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, c.width, c.height);
-      const glow = this.warpIntensity * this.warpIntensity;
-      const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(cx, cy) * (0.25 + glow * 0.75));
-      g2.addColorStop(0, `rgba(255,246,230,${(glow * 0.85).toFixed(3)})`);
-      g2.addColorStop(1, 'rgba(255,246,230,0)');
-      ctx.fillStyle = g2;
       ctx.fillRect(0, 0, c.width, c.height);
     }
   }
