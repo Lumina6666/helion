@@ -1914,11 +1914,12 @@ export class SolarEngine {
   exitGalaxyView(silent = false) {
     const g = this.galaxy;
     if (!g || this.gxTrans) return;
+    // user-facing exit rides the anchor home — same dive as the Sun marker, no hard cut
+    if (!silent) { this.returnToSolarSystem(); return; }
     this.applyGalaxyScene(false);
     this.galaxy = null;
     this.galaxyObserve = false;
     if (this.params.speed === 0) this.setParam('speed', g.savedSpeed);
-    if (!silent) this.toast(STR[this.lang].toast.galaxyOff);
     this.emitSnapshot();
   }
 
