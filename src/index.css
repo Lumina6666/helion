@@ -292,6 +292,30 @@ body { position: fixed; inset: 0; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
 .grid4 .hbtn { font-size: 8.5px; letter-spacing: .05em; }
 
+#deck { transition: transform .32s cubic-bezier(.22,.8,.3,1), opacity .32s ease; }
+#deck.tucked { transform: translateX(calc(100% + 56px)); opacity: 0; pointer-events: none; }
+.deck-tools { display: flex; align-items: center; gap: 8px; }
+#deck-collapse {
+  background: none; border: none; padding: 0 3px;
+  color: var(--cyan-dim); font-size: 13px; line-height: 1;
+  letter-spacing: 0; cursor: pointer; transition: color .2s;
+}
+#deck-collapse:hover { color: var(--cyan); }
+#deck-handle {
+  position: absolute; right: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 24px; height: 92px;
+  border: 1px solid var(--cyan-dim); border-right: none;
+  border-radius: 4px 0 0 4px;
+  background: rgba(8, 18, 32, .55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: rgba(127, 220, 255, .45);
+  font-size: 13px; cursor: pointer;
+  transition: color .2s, background .2s, width .2s;
+}
+#deck-handle:hover { color: rgba(127, 220, 255, .95); background: rgba(12, 26, 44, .8); width: 30px; }
+
 #deck-hint {
   font-size: 8px;
   letter-spacing: .12em;

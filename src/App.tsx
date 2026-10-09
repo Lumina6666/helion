@@ -50,6 +50,8 @@ export default function App() {
   const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null, probe: null });
   const [dossierOpen, setDossierOpen] = useState(true);
   const [hudOn, setHudOn] = useState(true);
+  const [deckOn, setDeckOn] = useState(() => { try { return localStorage.getItem('helion.deck') !== '0'; } catch { return true; } });
+  const toggleDeck = () => setDeckOn(v => { const n = !v; try { localStorage.setItem('helion.deck', n ? '1' : '0'); } catch { /* private mode */ } return n; });
   const [paramsOpen, setParamsOpen] = useState(false);
   const [introGone, setIntroGone] = useState(false);
   const [introFading, setIntroFading] = useState(false);
@@ -178,6 +180,7 @@ export default function App() {
         case 'p': setParamsOpen(v => !v); break;
         case 'm': eng.toggleSound(); break;
         case 'h': toggleHud(); break;
+        case 'x': toggleDeck(); break;
         case 'e': eng.toggleEphemeris(); break;
         case 'd': setDossierOpen(v => !v); break;
         case 't': setTimeOpen(v => !v); break;
@@ -294,10 +297,13 @@ export default function App() {
           {snap?.focusFact ? <div className="row"><span className="fact">▸ {snap.focusFact}</span></div> : null}
         </div>
 
-        <div id="deck" className="ctl">
+        <div id="deck" className={deckOn ? 'ctl' : 'ctl tucked'}>
           <div className="deck-title">
             <span>{snap?.cine ? `${t.cinePrefix} · ${snap.shotName}` : t.flightDeck}</span>
-            <span className="deck-dot" />
+            <span className="deck-tools">
+              <button id="deck-collapse" title={t.deckHide} onClick={toggleDeck}>›</button>
+              <span className="deck-dot" />
+            </span>
           </div>
           <button className={`hbtn wide ${snap?.cine ? 'active' : ''}`} onClick={() => eng()?.toggleCine()}>
             {snap?.cine ? t.cineStop : t.cinePlay}
@@ -334,6 +340,9 @@ export default function App() {
           <div id="deck-hint">{t.deckHint}</div>
         </div>
 
+        {!deckOn && (
+          <button id="deck-handle" className="ctl" title={t.deckShow} onClick={toggleDeck}>❮</button>
+        )}
         <div id="hint" className={hintShow ? 'show' : ''}>
           {t.bottomHint}
         </div>

@@ -20,6 +20,8 @@ export interface Strings {
   labels: string;
   params: string;
   hud: string;
+  deckHide: string;
+  deckShow: string;
   soundOn: string;
   soundOff: string;
   deckHint: string;
@@ -218,10 +220,12 @@ export const STR: Record<Lang, Strings> = {
     labels: 'LABELS',
     params: 'PARAMS',
     hud: 'HUD',
+    deckHide: 'HIDE PANEL · X',
+    deckShow: 'SHOW PANEL · X',
     soundOn: '🔊 SOUND: ON',
     soundOff: '🔇 SOUND: OFF',
-    deckHint: '1-4 VIEWS · C CINE · R ORBIT · L LABELS · P PARAMS · M SOUND · E EPHEM · D DOSSIER · H HUD',
-    bottomHint: 'DRAG ORBIT · SCROLL ZOOM · CLICK PLANET TO FOCUS · C CINEMATIC · M SOUND · H HUD',
+    deckHint: '1-4 VIEWS · C CINE · R ORBIT · L LABELS · P PARAMS · M SOUND · E EPHEM · D DOSSIER · H HUD · X PANEL',
+    bottomHint: 'DRAG ORBIT · SCROLL ZOOM · CLICK PLANET TO FOCUS · C CINEMATIC · M SOUND · H HUD · X PANEL',
     parameters: 'PARAMETERS',
     reset: 'RESET',
     timeFlow: 'TIME FLOW',
@@ -414,10 +418,12 @@ export const STR: Record<Lang, Strings> = {
     labels: '标签',
     params: '参数',
     hud: '界面',
+    deckHide: '收起面板 · X',
+    deckShow: '展开面板 · X',
     soundOn: '🔊 音效: 开',
     soundOff: '🔇 音效: 关',
-    deckHint: '1-4 视角 · C 运镜 · R 环绕 · L 标签 · P 参数 · M 音效 · E 星历 · D 档案 · H 界面',
-    bottomHint: '拖拽旋转 · 滚轮缩放 · 点击行星聚焦 · C 电影运镜 · M 音效 · H 界面',
+    deckHint: '1-4 视角 · C 运镜 · R 环绕 · L 标签 · P 参数 · M 音效 · E 星历 · D 档案 · H 界面 · X 面板',
+    bottomHint: '拖拽旋转 · 滚轮缩放 · 点击行星聚焦 · C 电影运镜 · M 音效 · H 界面 · X 面板',
     parameters: '参数设置',
     reset: '重置',
     timeFlow: '时间流速',
