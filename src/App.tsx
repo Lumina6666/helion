@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
 import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC } from './solar/data';
+import { rangeFromEarth, rangeSeries, fmtLightTime } from './solar/range';
+import { BASE_JD } from './solar/ephem';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
 import type { AstroEvent } from './solar/events';
 import { STR } from './solar/i18n';
@@ -212,6 +214,13 @@ export default function App() {
   const eng = () => engineRef.current;
   const p = snap?.params ?? { speed: 1, orbitOpacity: 0.55, planetScale: 1, starfield: 0.9 };
   const dossier = focusId !== 'sun' ? DOSSIER[focusId] : undefined;
+  const jdNow = BASE_JD + tel.simDays;
+  const range = dossier ? rangeFromEarth(focusId, jdNow) : null;
+  const rangeSpark = useMemo(
+    () => (dossier && range ? rangeSeries(focusId, jdNow) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focusId, Math.floor(tel.simDays), !!dossier, !!range],
+  );
 
   // ---- time panel helpers
   const evDesc = (ev: { type: string; a: string; b: string }): string => {
@@ -451,8 +460,36 @@ export default function App() {
               <div className="d-caption">{t.vsEarth}</div>
             </div>
           )}
-          {tel.focusAU != null && (
-            <div className="d-row highlight"><span>{t.rangeNow}</span><span className="p-val">{tel.focusAU.toFixed(1)} AU</span></div>
+          {range && (
+            <div className="d-block">
+              <div className="d-meta">
+                <span>{t.rangeTitle}</span>
+                <span className="p-val">{range.au < 0.01 ? range.au.toExponential(2) : range.au.toFixed(range.au < 1 ? 3 : 2)} AU</span>
+              </div>
+              <div className="d-caption">
+                {lang === 'zh' ? `约 ${(range.au * 1.496).toFixed(range.au * 1.496 < 10 ? 2 : 1)} 亿公里` : `≈ ${(range.au * 149.6).toLocaleString('en-US', { maximumFractionDigits: 1 })} M KM`}
+              </div>
+              {range.hostKm != null && (
+                <div className="d-row"><span>{t.rangeHost}</span><span className="p-val">{range.hostKm.toLocaleString()} KM</span></div>
+              )}
+              <div className="d-row highlight"><span>{t.rangeLight}</span><span className="p-val">{fmtLightTime(range.au, lang === 'zh')}</span></div>
+              {rangeSpark && (() => {
+                const lo = Math.min(...rangeSpark), hi = Math.max(...rangeSpark), pad = (hi - lo) * 0.12 || 1e-9;
+                const pts = rangeSpark.map((v, i) => `${(i / (rangeSpark.length - 1)) * 280},${(1 - (v - lo + pad * 0) / (hi - lo + 2 * pad)) * 40 + 3}`);
+                const iMin = rangeSpark.indexOf(lo), iMax = rangeSpark.indexOf(hi);
+                return (
+                  <>
+                    <svg className="d-spark" viewBox="0 0 280 46" preserveAspectRatio="none">
+                      <polyline points={pts.join(' ')} fill="none" strokeWidth="1.2" className="d-spark-line" />
+                      <line x1="140" y1="0" x2="140" y2="46" className="d-spark-now" />
+                      <circle cx={(iMin / (rangeSpark.length - 1)) * 280} cy={(1 - (lo - lo) / (hi - lo + 2 * pad)) * 40 + 3} r="2" className="d-spark-dot" />
+                      <circle cx={(iMax / (rangeSpark.length - 1)) * 280} cy={(1 - (hi - lo) / (hi - lo + 2 * pad)) * 40 + 3} r="2" className="d-spark-dot" />
+                    </svg>
+                    <div className="d-caption">{t.rangeTrend} · {lo.toFixed(2)}–{hi.toFixed(2)} AU</div>
+                  </>
+                );
+              })()}
+            </div>
           )}
           {dossier.rows.map(r => (
             <div className="d-row" key={r.k}><span>{lang === 'zh' ? r.kCn : r.k}</span><span className="p-val">{lang === 'zh' ? r.vCn : r.v}</span></div>

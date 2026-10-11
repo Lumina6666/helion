@@ -854,6 +854,16 @@ body { position: fixed; inset: 0; }
   line-height: 2.0;
 }
 #dossier .d-row.highlight span:first-child { color: var(--amber); }
+#dossier .d-spark {
+  width: 100%;
+  height: 46px;
+  margin-top: 6px;
+  background: rgba(120, 200, 255, 0.04);
+  border: 1px solid rgba(120, 200, 255, 0.12);
+}
+#dossier .d-spark-line { stroke: var(--cyan); opacity: 0.85; }
+#dossier .d-spark-now { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.9; }
+#dossier .d-spark-dot { fill: var(--cyan-dim); }
 #dossier .d-row .p-val { color: var(--hud-white); }
 #dossier .d-blurb {
   margin-top: 10px;

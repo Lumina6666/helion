@@ -65,6 +65,10 @@ export interface Strings {
   diameter: string;
   vsEarth: string;
   rangeNow: string;
+  rangeTitle: string;
+  rangeHost: string;
+  rangeLight: string;
+  rangeTrend: string;
   timeBtn: string;
   timePanel: string;
   pause: string;
@@ -270,6 +274,10 @@ export const STR: Record<Lang, Strings> = {
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
+    rangeTitle: 'RANGE FROM EARTH',
+    rangeHost: 'ORBITS HOST AT',
+    rangeLight: 'ONE-WAY LIGHT TIME',
+    rangeTrend: 'DISTANCE TREND — TODAY CENTERED',
     timeBtn: '⏱ TIME',
     timePanel: 'TIME CONTROL',
     pause: '⏸ PAUSE',
@@ -473,6 +481,10 @@ export const STR: Record<Lang, Strings> = {
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',
+    rangeTitle: '距地球',
+    rangeHost: '绕宿主轨道半径',
+    rangeLight: '单向光行时',
+    rangeTrend: '距离趋势 — 今日居中',
     timeBtn: '⏱ 时间',
     timePanel: '时间控制',
     pause: '⏸ 暂停',
