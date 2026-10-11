@@ -69,6 +69,7 @@ export interface Strings {
   rangeHost: string;
   rangeLight: string;
   rangeTrend: string;
+  miniWorlds: string;
   timeBtn: string;
   timePanel: string;
   pause: string;
@@ -278,6 +279,7 @@ export const STR: Record<Lang, Strings> = {
     rangeHost: 'ORBITS HOST AT',
     rangeLight: 'ONE-WAY LIGHT TIME',
     rangeTrend: 'DISTANCE TREND — TODAY CENTERED',
+    miniWorlds: 'MINI WORLDS',
     timeBtn: '⏱ TIME',
     timePanel: 'TIME CONTROL',
     pause: '⏸ PAUSE',
@@ -485,6 +487,7 @@ export const STR: Record<Lang, Strings> = {
     rangeHost: '绕宿主轨道半径',
     rangeLight: '单向光行时',
     rangeTrend: '距离趋势 — 今日居中',
+    miniWorlds: '小天体',
     timeBtn: '⏱ 时间',
     timePanel: '时间控制',
     pause: '⏸ 暂停',

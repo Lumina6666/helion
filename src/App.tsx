@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
-import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC } from './solar/data';
+import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC, MINI_GROUPS } from './solar/data';
 import { rangeFromEarth, rangeSeries, fmtLightTime } from './solar/range';
 import { BASE_JD } from './solar/ephem';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
@@ -55,6 +55,7 @@ export default function App() {
   const [deckOn, setDeckOn] = useState(() => { try { return localStorage.getItem('helion.deck') !== '0'; } catch { return true; } });
   const toggleDeck = () => setDeckOn(v => { const n = !v; try { localStorage.setItem('helion.deck', n ? '1' : '0'); } catch { /* private mode */ } return n; });
   const [paramsOpen, setParamsOpen] = useState(false);
+  const [miniOpen, setMiniOpen] = useState(false);
   const [introGone, setIntroGone] = useState(false);
   const [introFading, setIntroFading] = useState(false);
   const [toast, setToast] = useState('');
@@ -334,6 +335,9 @@ export default function App() {
           <button className={`hbtn wide ${snap?.ephemeris ? 'active' : ''}`} onClick={() => eng()?.toggleEphemeris()}>
             🛰 {t.ephemeris}{snap?.ephemeris ? t.ephemOn : t.ephemOff}
           </button>
+          <button className={`hbtn wide ${miniOpen ? 'active' : ''}`} onClick={() => setMiniOpen(v => !v)}>
+            {t.miniWorlds}
+          </button>
           <button className={`hbtn wide ${timeOpen ? 'active' : ''}`} onClick={() => setTimeOpen(v => !v)}>
             {t.timeBtn}
           </button>
@@ -371,6 +375,24 @@ export default function App() {
             </div>
           );
         })()}
+        {miniOpen && (
+          <div id="minipanel" className="ctl">
+            {MINI_GROUPS.map((g) => (
+              <div className="mg-row" key={g.cat}>
+                <span className="mg-cat">{lang === 'zh' ? g.catCn : g.cat}</span>
+                <span className="mg-items">
+                  {g.items.map((it) => (
+                    <button key={it.id}
+                      className={focusId === it.id ? 'mc-chip on' : 'mc-chip'}
+                      onClick={() => { eng()?.focusBodyById(it.id); setMiniOpen(false); }}>
+                      {lang === 'zh' ? it.cn : it.name}
+                    </button>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <div id="hint" className={hintShow ? 'show' : ''}>
           {t.bottomHint}
         </div>

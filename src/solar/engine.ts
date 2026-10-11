@@ -9,7 +9,7 @@ import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
-  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS,
+  ASTEROID_SPECS, DWARF_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS,
   MOON_SYS, MOON_HOST } from './data';
 import type { MoonSysSpec } from './data';
 import type { Landmark, GalaxyPoi } from './data';
@@ -416,7 +416,7 @@ export class SolarEngine {
     this.sunGlow2 = glow2;
 
     // planets (+ belt asteroids Ceres & Vesta)
-    for (const spec of [...PLANETS, ...ASTEROID_SPECS]) {
+    for (const spec of [...PLANETS, ...ASTEROID_SPECS, ...DWARF_SPECS]) {
       const node = this.makePlanet(spec);
       this.planets.push(node);
       if (spec.id === 'earth') this.earthNode = node;
@@ -2388,6 +2388,7 @@ export class SolarEngine {
     'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn',
     'uranus', 'neptune', 'pluto', 'moon', 'ceres', 'vesta',
     'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus',
+    'eris', 'haumea', 'makemake',
   ]);
 
   enterGlobeView(node?: PlanetNode) {

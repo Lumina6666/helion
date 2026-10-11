@@ -313,6 +313,49 @@ function paintCallisto(): HTMLCanvasElement {
   return c;
 }
 
+// Eris — bright methane-frost white with subtle icy mottling
+function paintEris(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      const n = fbm(nx, ny, 53.1, 5, 6);
+      const m = fbm(nx * 3 + 7, ny * 3, 53.7, 4, 10);
+      let col = mix([222, 228, 236], [196, 205, 218], Math.min(1, Math.max(0, n * 1.5 - 0.15)));
+      col = mix(col, [236, 240, 246], Math.min(1, Math.max(0, m * 2.0 - 0.85))); // frost patches
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+// Haumea — pale icy body with the legendary dark red spot
+function paintHaumea(): HTMLCanvasElement {
+  const c = paintRocky([[214, 208, 198], [188, 182, 172], [228, 224, 216]], 61.3, 40);
+  const ctx = c.getContext('2d')!;
+  const W = c.width, H = c.height;
+  const cx = hash2(1, 5, 61.3) * W, cy = H * (0.35 + hash2(1, 9, 61.3) * 0.3);
+  const r = 14 + hash2(1, 13, 61.3) * 8;
+  for (const ox of [-W, 0, W]) {
+    const g = ctx.createRadialGradient(cx + ox, cy, r * 0.1, cx + ox, cy, r);
+    g.addColorStop(0, 'rgba(146,64,44,0.85)');
+    g.addColorStop(0.6, 'rgba(150,74,52,0.45)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(cx + ox, cy, r, r * 0.62, 0.5, 0, Math.PI * 2); ctx.fill();
+  }
+  return c;
+}
+
+// Makemake — rusty red-brown methane ice, lightly cratered
+function paintMakemake(): HTMLCanvasElement {
+  return paintRocky([[188, 122, 84], [150, 92, 62], [210, 148, 106]], 71.9, 55);
+}
+
 // Titan — soft orange nitrogen haze, nearly featureless
 function paintTitan(): HTMLCanvasElement {
   const W = 512, H = 256;
@@ -386,6 +429,9 @@ export function planetTexture(kind: TexKind): THREE.CanvasTexture {
     case 'callisto':  c = paintCallisto(); break;
     case 'titan':     c = paintTitan(); break;
     case 'enceladus': c = paintEnceladus(); break;
+    case 'eris':      c = paintEris(); break;
+    case 'haumea':    c = paintHaumea(); break;
+    case 'makemake':  c = paintMakemake(); break;
   }
   return toTexture(c);
 }

@@ -864,6 +864,34 @@ body { position: fixed; inset: 0; }
 #dossier .d-spark-line { stroke: var(--cyan); opacity: 0.85; }
 #dossier .d-spark-now { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.9; }
 #dossier .d-spark-dot { fill: var(--cyan-dim); }
+
+/* ------------------------------------------------------------- mini-worlds */
+#minipanel {
+  position: fixed;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  background: rgba(6, 12, 20, 0.82);
+  border: 1px solid rgba(120, 200, 255, 0.18);
+  backdrop-filter: blur(6px);
+  padding: 8px 12px;
+  max-width: min(560px, calc(100vw - 24px));
+}
+#minipanel .mg-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+}
+#minipanel .mg-cat {
+  font-size: 7.5px;
+  letter-spacing: 0.22em;
+  color: var(--cyan-dim);
+  min-width: 64px;
+  flex-shrink: 0;
+}
+#minipanel .mg-items { display: flex; flex-wrap: wrap; gap: 5px; }
 #dossier .d-row .p-val { color: var(--hud-white); }
 #dossier .d-blurb {
   margin-top: 10px;

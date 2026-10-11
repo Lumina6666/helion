@@ -22,7 +22,8 @@ export type TexKind =
   | 'mercury' | 'venus' | 'earth' | 'mars'
   | 'jupiter' | 'saturn' | 'uranus' | 'neptune' | 'pluto'
   | 'ceres' | 'vesta'
-  | 'io' | 'europa' | 'ganymede' | 'callisto' | 'titan' | 'enceladus';
+  | 'io' | 'europa' | 'ganymede' | 'callisto' | 'titan' | 'enceladus'
+  | 'eris' | 'haumea' | 'makemake';
 
 export const SUN_RADIUS = 5;
 export const AU_UNITS = 24;          // units per AU
@@ -196,6 +197,33 @@ export const ASTEROID_SPECS: PlanetSpec[] = [
     tex: 'vesta', color: '#c8b9a0',
     fact: '2.36 AU · BRIGHTEST ASTEROID · VISIBLE TO NAKED EYE',
     factCn: '2.36 AU · 最亮的小行星 · 肉眼可见',
+  },
+];
+
+// ------------------------------------------------------------ outer dwarfs
+// Eris / Haumea / Makemake — scene radii extend Pluto's compressed scale;
+// inclinations are REAL (44°/28°/29°) which is what makes them look alien.
+export const DWARF_SPECS: PlanetSpec[] = [
+  {
+    id: 'eris', name: 'ERIS', cn: '阋神星',
+    radius: 0.16, distance: 100, inclination: 44.04, tiltDeg: 78, spin: 1.2,
+    tex: 'eris', color: '#dfe6ee',
+    fact: '67.7 AU · 559 YR · THE DWARF THAT DEMOTED PLUTO',
+    factCn: '67.7 AU · 559 年 · 让冥王星"降级"的矮行星',
+  },
+  {
+    id: 'haumea', name: 'HAUMEA', cn: '妊神星',
+    radius: 0.13, distance: 92, inclination: 28.21, tiltDeg: 115, spin: 4.0,
+    tex: 'haumea', color: '#e8ded6',
+    fact: '43.0 AU · 284 YR · 3.9-HOUR SPIN · HAS RINGS',
+    factCn: '43.0 AU · 284 年 · 3.9 小时自转 · 拥有星环',
+  },
+  {
+    id: 'makemake', name: 'MAKEMAKE', cn: '鸟神星',
+    radius: 0.14, distance: 96, inclination: 29.0, tiltDeg: 0, spin: 1.6,
+    tex: 'makemake', color: '#d8a37e',
+    fact: '45.6 AU · 306 YR · METHANE-ICE RED',
+    factCn: '45.6 AU · 306 年 · 甲烷冰的红色世界',
   },
 ];
 
@@ -376,7 +404,32 @@ export const DIST_AU: Record<string, number> = {
   pluto: 39.48, moon: 1.0, halley: 17.8, ceres: 2.767, vesta: 2.362,
   io: 5.203, europa: 5.203, ganymede: 5.203, callisto: 5.203,
   titan: 9.583, enceladus: 9.583,
+  eris: 67.7, haumea: 43.0, makemake: 45.6,
 };
+
+// ------------------------------------------------------------ mini-worlds browser
+export interface MiniGroup { cat: string; catCn: string; items: Array<{ id: string; name: string; cn: string }> }
+export const MINI_GROUPS: MiniGroup[] = [
+  { cat: 'DWARF PLANETS', catCn: '矮行星', items: [
+    { id: 'pluto', name: 'PLUTO', cn: '冥王星' },
+    { id: 'ceres', name: 'CERES', cn: '谷神星' },
+    { id: 'eris', name: 'ERIS', cn: '阋神星' },
+    { id: 'haumea', name: 'HAUMEA', cn: '妊神星' },
+    { id: 'makemake', name: 'MAKEMAKE', cn: '鸟神星' },
+  ] },
+  { cat: 'ASTEROIDS', catCn: '小行星', items: [
+    { id: 'vesta', name: 'VESTA', cn: '灶神星' },
+  ] },
+  { cat: 'COMETS', catCn: '彗星', items: [
+    { id: 'halley', name: 'HALLEY', cn: '哈雷彗星' },
+  ] },
+  { cat: 'PROBES', catCn: '探测器', items: [
+    { id: 'voyager1', name: 'VOYAGER 1', cn: '旅行者 1 号' },
+    { id: 'voyager2', name: 'VOYAGER 2', cn: '旅行者 2 号' },
+    { id: 'iss', name: 'ISS', cn: '国际空间站' },
+    { id: 'orbiter', name: 'ORBITER', cn: '轨道器' },
+  ] },
+];
 
 // ------------------------------------------------------------ dossier data
 export interface DossierRow { k: string; kCn: string; v: string; vCn: string }
@@ -638,6 +691,42 @@ export const DOSSIER: Record<string, Dossier> = {
       { k: 'PERIHELION', kCn: '近日点', v: '0.586 AU', vCn: '0.586 AU' },
       { k: 'APHELION', kCn: '远日点', v: '35.1 AU', vCn: '35.1 AU' },
       { k: 'MOTION', kCn: '运动方向', v: 'RETROGRADE', vCn: '逆行' },
+    ],
+  },
+  eris: {
+    type: 'DWARF PLANET', typeCn: '矮行星', diameterKm: 2326,
+    blurb: 'The scattered-disc world whose 2005 discovery forced astronomers to demote Pluto. A moon, Dysnomia, orbits it.',
+    blurbCn: '这颗离散盘天体 2005 年的发现直接促使冥王星降级。拥有一颗卫星"迪丝诺美亚"。',
+    rows: [
+      { k: 'ORBIT', kCn: '公转周期', v: '559 YR', vCn: '559 年' },
+      { k: 'DISTANCE', kCn: '轨道半径', v: '67.7 AU', vCn: '67.7 AU' },
+      { k: 'DISCOVERED', kCn: '发现年份', v: '2005', vCn: '2005 年' },
+      { k: 'MOON', kCn: '卫星', v: 'DYSNOMIA', vCn: '迪丝诺美亚' },
+      { k: 'LEGACY', kCn: '历史影响', v: 'PLUTO DEMOTED', vCn: '促成冥王星降级' },
+    ],
+  },
+  haumea: {
+    type: 'DWARF PLANET', typeCn: '矮行星', diameterKm: 1632,
+    blurb: 'Spun into an egg by a 3.9-hour day — the fastest large body known — and wearing a ring discovered in 2017.',
+    blurbCn: '3.9 小时的自转把它甩成了蛋形——已知自转最快的大天体——2017 年还发现它带着一圈星环。',
+    rows: [
+      { k: 'ORBIT', kCn: '公转周期', v: '284 YR', vCn: '284 年' },
+      { k: 'DISTANCE', kCn: '轨道半径', v: '43.0 AU', vCn: '43.0 AU' },
+      { k: 'SPIN', kCn: '自转周期', v: '3.9 H', vCn: '3.9 小时' },
+      { k: 'SHAPE', kCn: '形状', v: 'ELLIPSOID 2100×1074 KM', vCn: '椭球 2100×1074 千米' },
+      { k: 'RINGS + MOONS', kCn: '星环与卫星', v: '1 RING · 2 MOONS', vCn: '1 环 · 2 卫星' },
+    ],
+  },
+  makemake: {
+    type: 'DWARF PLANET', typeCn: '矮行星', diameterKm: 1430,
+    blurb: 'A reddish methane-ice world named after the Rapa Nui creator god — the second-brightest Kuiper belt object after Pluto.',
+    blurbCn: '以复活节岛创世神命名的红色甲烷冰世界——亮度仅次于冥王星的柯伊伯带天体。',
+    rows: [
+      { k: 'ORBIT', kCn: '公转周期', v: '306 YR', vCn: '306 年' },
+      { k: 'DISTANCE', kCn: '轨道半径', v: '45.6 AU', vCn: '45.6 AU' },
+      { k: 'DISCOVERED', kCn: '发现年份', v: '2005', vCn: '2005 年' },
+      { k: 'SURFACE', kCn: '表面', v: 'METHANE ICE · −239°C', vCn: '甲烷冰 · −239°C' },
+      { k: 'MOON', kCn: '卫星', v: 'MK 2', vCn: 'MK 2' },
     ],
   },
   voyager1: {
