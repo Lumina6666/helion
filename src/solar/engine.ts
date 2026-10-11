@@ -365,7 +365,28 @@ export class SolarEngine {
         this.loop();
         this.emitSnapshot();
         this.onReady?.();
+        this.prewarmGalaxy();
       });
+  }
+
+  // pay the first-visit cost while the user is still admiring the solar system:
+  // build the galaxy and precompile all its shaders in idle time, so the very
+  // first warp is as smooth as every later one (compile stalls used to eat the
+  // opening beats — the belt fade sat right in that window and looked "slow")
+  private prewarmGalaxy() {
+    const run = () => {
+      if (this.disposed) return;
+      if (!this.galaxyGroup) this.buildGalaxy();
+      const done = () => { /* shaders warm — first warp now runs at full speed */ };
+      try {
+        const p = this.renderer.compileAsync(this.scene, this.camera);
+        if (p && typeof p.then === 'function') p.then(done).catch(() => { /* garnish */ });
+        else { this.renderer.compile(this.scene, this.camera); done(); }
+      } catch { /* prewarm is a gift, never a failure */ }
+    };
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void }).requestIdleCallback;
+    if (ric) ric(run, { timeout: 4000 });
+    else setTimeout(run, 1500);
   }
 
   private buildScene() {
