@@ -184,6 +184,188 @@ function paintSun(): HTMLCanvasElement {
 }
 
 // ------------------------------------------------------------- public API
+// ------------------------------------------------------------- moon-system painters
+// Each moon gets a bespoke look drawn with the same seamless-noise toolkit.
+
+// Io — sulfur-yellow plains pocked with dark volcanic vents ringed in orange
+function paintIo(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      const n = fbm(nx, ny, 61.3, 5, 6);
+      const m = fbm(nx * 2 + 9, ny * 2, 101.3, 4, 12);
+      let col = mix([226, 200, 110], [198, 164, 74], Math.min(1, Math.max(0, n * 1.7 - 0.25)));
+      col = mix(col, [240, 226, 160], Math.min(1, Math.max(0, m * 2.0 - 0.9)));
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  for (let i = 0; i < 22; i++) {
+    const cx = hash2(i, 3, 61.3) * W, cy = hash2(i, 7, 61.3) * H;
+    const r = 2 + hash2(i, 11, 61.3) * 6;
+    for (const ox of [-W, 0, W]) {
+      const g = ctx.createRadialGradient(cx + ox, cy, r * 0.15, cx + ox, cy, r);
+      g.addColorStop(0, 'rgba(52,36,22,0.75)');
+      g.addColorStop(0.55, 'rgba(206,96,38,0.38)');
+      g.addColorStop(1, 'rgba(206,96,38,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx + ox, cy, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  return c;
+}
+
+// Europa — pale ice shell crazed with brown lineae
+function paintEuropa(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      const n = fbm(nx, ny, 77.9, 5, 6);
+      let col = mix([222, 216, 204], [204, 194, 180], Math.min(1, Math.max(0, n * 1.5 - 0.2)));
+      col = mix(col, [234, 230, 220], Math.min(1, Math.max(0, fbm(nx * 3, ny * 3, 88.1, 4, 12) * 2.2 - 1.0)));
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // lineae: long wandering brown cracks, wrapped at the seam
+  for (let i = 0; i < 64; i++) {
+    let x = hash2(i, 5, 77.9) * W, y = hash2(i, 9, 77.9) * H;
+    let ang = hash2(i, 13, 77.9) * Math.PI * 2;
+    ctx.strokeStyle = `rgba(150,92,58,${(0.16 + hash2(i, 17, 77.9) * 0.22).toFixed(2)})`;
+    ctx.lineWidth = 0.7 + hash2(i, 21, 77.9) * 1.6;
+    for (const ox of [-W, 0, W]) {
+      ctx.beginPath();
+      let px = x + ox, py = y, a = ang;
+      ctx.moveTo(px, py);
+      const segs = 4 + Math.floor(hash2(i, 25, 77.9) * 5);
+      for (let k = 0; k < segs; k++) {
+        a += (hash2(i, 29 + k, 77.9) - 0.5) * 1.2;
+        px += Math.cos(a) * (14 + hash2(i, 33 + k, 77.9) * 30);
+        py += Math.sin(a) * (8 + hash2(i, 37 + k, 77.9) * 16);
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+  }
+  return c;
+}
+
+// Ganymede — two-tone: dark ancient terrain against bright grooved lanes
+function paintGanymede(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      const dark = fbm(nx, ny, 43.7, 5, 6) > 0.52;
+      const n = fbm(nx * 2 + 5, ny * 2, 48.7, 4, 12);
+      const base: RGB = dark ? [116, 104, 88] : [172, 162, 142];
+      const alt: RGB = dark ? [138, 126, 108] : [188, 178, 158];
+      const col = mix(base, alt, Math.min(1, Math.max(0, n * 1.8 - 0.3)));
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // fine groove strokes on the bright lanes
+  ctx.strokeStyle = 'rgba(96,86,70,0.28)';
+  for (let i = 0; i < 46; i++) {
+    const x = hash2(i, 5, 43.7) * W, y = hash2(i, 9, 43.7) * H;
+    const len = 20 + hash2(i, 13, 43.7) * 46;
+    const a = hash2(i, 17, 43.7) * Math.PI;
+    ctx.lineWidth = 0.6 + hash2(i, 21, 43.7);
+    for (const ox of [-W, 0, W]) {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y);
+      ctx.lineTo(x + ox + Math.cos(a) * len, y + Math.sin(a) * len * 0.35);
+      ctx.stroke();
+    }
+  }
+  return c;
+}
+
+// Callisto — dark, densely cratered; bright rim flecks
+function paintCallisto(): HTMLCanvasElement {
+  const c = paintRocky([[96, 88, 78], [70, 64, 58], [120, 110, 98]], 29.4, 60);
+  const ctx = c.getContext('2d')!;
+  const W = c.width, H = c.height;
+  for (let i = 0; i < 210; i++) {
+    const cx = hash2(i, 3, 29.4) * W, cy = hash2(i, 7, 29.4) * H;
+    const r = 0.8 + hash2(i, 11, 29.4) * 3.4;
+    for (const ox of [-W, 0, W]) {
+      const g = ctx.createRadialGradient(cx + ox, cy, r * 0.2, cx + ox, cy, r);
+      g.addColorStop(0, 'rgba(232,226,214,0.30)');
+      g.addColorStop(0.7, 'rgba(30,26,22,0.22)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx + ox, cy, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  return c;
+}
+
+// Titan — soft orange nitrogen haze, nearly featureless
+function paintTitan(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    const v = y / H;
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      const n = fbm(nx, ny, 17.6, 4, 6);
+      let col = mix([214, 148, 72], [232, 176, 108], Math.min(1, Math.max(0, n * 1.3 - 0.1)));
+      // darker polar hood, faint equatorial band — Titan's haze caps
+      const polar = Math.abs(v - 0.5) * 2;
+      col = mix(col, [188, 122, 54], Math.min(1, Math.max(0, polar - 0.55) * 0.9));
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+// Enceladus — bright ice, blue-green tiger stripes near the south pole
+function paintEnceladus(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      const n = fbm(nx, ny, 55.2, 5, 6);
+      let col = mix([234, 242, 248], [246, 250, 253], Math.min(1, Math.max(0, n * 1.4 - 0.15)));
+      col = mix(col, [214, 226, 234], Math.min(1, Math.max(0, fbm(nx * 2, ny * 2, 59.2, 4, 12) * 2.0 - 1.1)));
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // four tiger stripes crossing the south-polar band (bottom of the equirect)
+  for (let k = 0; k < 4; k++) {
+    const yBase = H * (0.82 + k * 0.045);
+    ctx.strokeStyle = 'rgba(88,140,162,0.5)';
+    ctx.lineWidth = 2.6 + hash2(k, 3, 55.2) * 1.6;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 8) {
+      const y = yBase + Math.sin((x / W) * Math.PI * 4 + k * 1.7) * 4.5;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  return c;
+}
+
 export function planetTexture(kind: TexKind): THREE.CanvasTexture {
   let c: HTMLCanvasElement;
   switch (kind) {
@@ -198,6 +380,12 @@ export function planetTexture(kind: TexKind): THREE.CanvasTexture {
     case 'pluto':   c = paintRocky([[196, 178, 158], [150, 128, 110], [222, 206, 188]], 31.6, 24); break;
     case 'ceres':   c = paintRocky([[142, 132, 118], [104, 96, 88], [170, 160, 146]], 47.3, 60); break;
     case 'vesta':   c = paintRocky([[168, 150, 132], [128, 110, 96], [196, 178, 158]], 91.7, 45); break;
+    case 'io':        c = paintIo(); break;
+    case 'europa':    c = paintEuropa(); break;
+    case 'ganymede':  c = paintGanymede(); break;
+    case 'callisto':  c = paintCallisto(); break;
+    case 'titan':     c = paintTitan(); break;
+    case 'enceladus': c = paintEnceladus(); break;
   }
   return toTexture(c);
 }

@@ -1031,3 +1031,24 @@ body { position: fixed; inset: 0; }
   z-index: 14;
   pointer-events: none;
 }
+
+/* moon-system selector chips */
+#moon-chips {
+  position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: rgba(8, 18, 32, .55); border: 1px solid var(--cyan-dim);
+  border-radius: 4px; backdrop-filter: blur(4px); z-index: 30;
+}
+.mc-title {
+  font-size: 10px; letter-spacing: 2px; color: rgba(127, 220, 255, .5);
+  margin-right: 4px; white-space: nowrap;
+}
+.mc-chip {
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+  color: rgba(200, 225, 240, .75); font: inherit; font-size: 11px;
+  letter-spacing: 1px; padding: 3px 9px; cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s; white-space: nowrap;
+}
+.mc-chip:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+.mc-chip.on { color: #06121f; background: var(--cyan); border-color: var(--cyan); }
+@media (max-width: 900px) { #moon-chips { bottom: 70px; } }

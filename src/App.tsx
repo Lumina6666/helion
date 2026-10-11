@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
-import { VIEWS, DOSSIER, PLANETS, DIST_AU } from './solar/data';
+import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST } from './solar/data';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
 import type { AstroEvent } from './solar/events';
 import { STR } from './solar/i18n';
@@ -343,6 +343,22 @@ export default function App() {
         {!deckOn && (
           <button id="deck-handle" className="ctl" title={t.deckShow} onClick={toggleDeck}>❮</button>
         )}
+        {(() => {
+          const sysHost = (focusId === 'jupiter' || focusId === 'saturn') ? focusId : MOON_HOST[focusId];
+          if (!sysHost) return null;
+          return (
+            <div id="moon-chips" className="ctl">
+              <span className="mc-title">{sysHost === 'jupiter' ? t.moonSysJupiter : t.moonSysSaturn}</span>
+              {MOON_SYS[sysHost].map((m) => (
+                <button key={m.id}
+                  className={focusId === m.id ? 'mc-chip on' : 'mc-chip'}
+                  onClick={() => eng()?.focusBodyById(m.id)}>
+                  {lang === 'zh' ? m.cn : m.name}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         <div id="hint" className={hintShow ? 'show' : ''}>
           {t.bottomHint}
         </div>
@@ -457,7 +473,7 @@ export default function App() {
               {t.globeBtn}
             </button>
           )}
-          {focusId !== 'sun' && (
+          {focusId !== 'sun' && !MOON_HOST[focusId] && (
             <button className="hbtn wide" style={{ marginTop: 8 }}
               onClick={() => eng()?.enterSurfaceView()}>
               {t.surfaceBtn}

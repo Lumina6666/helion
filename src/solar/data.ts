@@ -21,7 +21,8 @@ export interface PlanetSpec {
 export type TexKind =
   | 'mercury' | 'venus' | 'earth' | 'mars'
   | 'jupiter' | 'saturn' | 'uranus' | 'neptune' | 'pluto'
-  | 'ceres' | 'vesta';
+  | 'ceres' | 'vesta'
+  | 'io' | 'europa' | 'ganymede' | 'callisto' | 'titan' | 'enceladus';
 
 export const SUN_RADIUS = 5;
 export const AU_UNITS = 24;          // units per AU
@@ -301,11 +302,80 @@ export const MOON_PERIOD_DAYS = 27.3217;
 export const MOON_SCENE_R = 2.1;
 export const NEW_MOON_JD = 2440587.5 + Date.UTC(2026, 6, 14, 17, 44) / 86400000;
 
+// ------------------------------------------------------------ moon systems
+// First-class mini-worlds: Jupiter's four Galilean moons + Saturn's Titan and
+// Enceladus. All dossier numbers are real (JPL); scene sizes keep true relative
+// proportions (x2 readability boost, floor 0.07) while orbit radii are
+// sqrt-compressed around the host (real ratio in host radii kept in comments).
+// Positions run on a real-time showcase clock (same precedent as the ISS),
+// proportional to the true period ratios — so sim time-warp never blurs them.
+export interface MoonSysSpec extends PlanetSpec {
+  host: 'jupiter' | 'saturn';
+  showSecs: number;   // seconds per revolution on the showcase clock
+  phase: number;      // initial orbital phase (radians)
+}
+
+export const MOON_SYS: Record<'jupiter' | 'saturn', MoonSysSpec[]> = {
+  jupiter: [
+    {
+      id: 'io', name: 'IO', cn: '木卫一', host: 'jupiter',
+      radius: 0.15, distance: 5.1 /* 6.0 Rj */, inclination: 0.2, tiltDeg: 0, spin: 0,
+      tex: 'io', color: '#d9c25a', showSecs: 10, phase: 0.4,
+      fact: 'MOST VOLCANIC WORLD · 400+ ACTIVE VOLCANOES',
+      factCn: '火山活动最剧烈的天体 · 400+ 活火山',
+    },
+    {
+      id: 'europa', name: 'EUROPA', cn: '木卫二', host: 'jupiter',
+      radius: 0.13, distance: 6.5 /* 9.6 Rj */, inclination: 1.9, tiltDeg: 0, spin: 0,
+      tex: 'europa', color: '#cfd8dc', showSecs: 20, phase: 1.9,
+      fact: 'CRACKED ICE SHELL · OCEAN BENEATH',
+      factCn: '冰壳裂纹纵横 · 冰下藏有海洋',
+    },
+    {
+      id: 'ganymede', name: 'GANYMEDE', cn: '木卫三', host: 'jupiter',
+      radius: 0.22, distance: 8.2 /* 15.3 Rj */, inclination: 0.8, tiltDeg: 0, spin: 0,
+      tex: 'ganymede', color: '#9a8f7d', showSecs: 40, phase: 3.5,
+      fact: 'LARGEST MOON IN THE SOLAR SYSTEM · OWN MAGNETIC FIELD',
+      factCn: '太阳系最大的卫星 · 拥有自己的磁场',
+    },
+    {
+      id: 'callisto', name: 'CALLISTO', cn: '木卫四', host: 'jupiter',
+      radius: 0.2, distance: 10.8 /* 26.9 Rj */, inclination: 2.0, tiltDeg: 0, spin: 0,
+      tex: 'callisto', color: '#6f6a60', showSecs: 94, phase: 5.2,
+      fact: 'MOST CRATERED SURFACE · 4 BILLION YEARS OLD',
+      factCn: '陨击最密集的表面 · 40 亿年的古老世界',
+    },
+  ],
+  saturn: [
+    {
+      id: 'titan', name: 'TITAN', cn: '土卫六', host: 'saturn',
+      radius: 0.22, distance: 14.0 /* 21.0 Rs */, inclination: 1.4, tiltDeg: 0, spin: 0,
+      tex: 'titan', color: '#d89a4a', showSecs: 90, phase: 0.9,
+      fact: 'THICK NITROGEN AIR · LAKES OF LIQUID METHANE',
+      factCn: '浓厚的氮大气 · 液态甲烷湖泊',
+    },
+    {
+      id: 'enceladus', name: 'ENCELADUS', cn: '土卫二', host: 'saturn',
+      radius: 0.07, distance: 6.2 /* 4.1 Rs */, inclination: 0.1, tiltDeg: 0, spin: 0,
+      tex: 'enceladus', color: '#cfe8ff', showSecs: 7.7, phase: 4.1,
+      fact: 'ICE GEYSERS · TIGER STRIPES · FEEDS THE E RING',
+      factCn: '冰羽喷泉 · 南极虎纹 · 哺育 E 环',
+    },
+  ],
+};
+
+export const MOON_HOST: Record<string, 'jupiter' | 'saturn'> = {
+  io: 'jupiter', europa: 'jupiter', ganymede: 'jupiter', callisto: 'jupiter',
+  titan: 'saturn', enceladus: 'saturn',
+};
+
 // heliocentric distances (AU) for the true-scale HUD readout
 export const DIST_AU: Record<string, number> = {
   mercury: 0.387, venus: 0.723, earth: 1.0, mars: 1.524,
   jupiter: 5.203, saturn: 9.583, uranus: 19.19, neptune: 30.07,
   pluto: 39.48, moon: 1.0, halley: 17.8, ceres: 2.767, vesta: 2.362,
+  io: 5.203, europa: 5.203, ganymede: 5.203, callisto: 5.203,
+  titan: 9.583, enceladus: 9.583,
 };
 
 // ------------------------------------------------------------ dossier data
@@ -376,6 +446,78 @@ export const DOSSIER: Record<string, Dossier> = {
       { k: 'DISTANCE', kCn: '距地球', v: '384,400 KM', vCn: '38.4 万千米' },
       { k: 'INCLINATION', kCn: '轨道倾角', v: '5.14°', vCn: '5.14°' },
       { k: 'SURFACE TEMP', kCn: '表面温度', v: '−173 ~ 127 °C', vCn: '−173 ~ 127 °C' },
+    ],
+  },
+  io: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 3643,
+    blurb: 'Tidal squeezing from Jupiter kneads its interior — hundreds of volcanoes constantly resurface this sulfur-yellow world.',
+    blurbCn: '木星的潮汐挤压不断揉捏它的内部——数百座火山持续重塑地表，把它涂成硫磺般的黄色。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.015 M⊕', vCn: '0.015 地球质量' },
+      { k: 'ORBIT', kCn: '绕木周期', v: '1.77 DAYS', vCn: '1.77 天' },
+      { k: 'DISTANCE', kCn: '距木星', v: '421,700 KM', vCn: '42.2 万千米' },
+      { k: 'SURFACE', kCn: '表面特征', v: 'SULFUR PLAINS · VOLCANOES', vCn: '硫磺荒原 · 活火山' },
+      { k: 'VISITOR', kCn: '探测器', v: 'GALILEO (1995–2003)', vCn: '伽利略号（1995–2003）' },
+    ],
+  },
+  europa: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 3122,
+    blurb: 'A web of brown cracks marks an ice shell hiding a global salty ocean — one of the best places to look for life.',
+    blurbCn: '棕色裂纹交织的冰壳之下藏着全球性的咸水海洋——太阳系中寻找地外生命最热门的目的地之一。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.008 M⊕', vCn: '0.008 地球质量' },
+      { k: 'ORBIT', kCn: '绕木周期', v: '3.55 DAYS', vCn: '3.55 天' },
+      { k: 'DISTANCE', kCn: '距木星', v: '671,000 KM', vCn: '67.1 万千米' },
+      { k: 'SURFACE', kCn: '表面特征', v: 'LINEAE CRACKS · ICE SHELL', vCn: '冰壳裂纹 · 条痕纵横' },
+      { k: 'VISITOR', kCn: '探测器', v: 'EUROPA CLIPPER EN ROUTE', vCn: '欧罗巴快船（在途，2030 抵达）' },
+    ],
+  },
+  ganymede: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 5268,
+    blurb: 'Bigger than Mercury, with its own magnetic field — dark ancient plains beside bright grooved ridges.',
+    blurbCn: '比水星还大，拥有自己的磁场——古老的暗色平原与明亮的沟槽山脊交错并存。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.025 M⊕', vCn: '0.025 地球质量' },
+      { k: 'ORBIT', kCn: '绕木周期', v: '7.15 DAYS', vCn: '7.15 天' },
+      { k: 'DISTANCE', kCn: '距木星', v: '1,070,000 KM', vCn: '107 万千米' },
+      { k: 'SURFACE', kCn: '表面特征', v: 'GROOVED TERRAIN · TWO-TONE', vCn: '沟槽地形 · 双色地表' },
+      { k: 'VISITOR', kCn: '探测器', v: 'JUICE EN ROUTE (2031)', vCn: 'JUICE 果汁号（在途，2031 抵达）' },
+    ],
+  },
+  callisto: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 4821,
+    blurb: 'The most cratered world known — a 4-billion-year-old ice-rock archive that never had the heat to renew itself.',
+    blurbCn: '已知陨击最密集的天体——40 亿年来从未有过足够的热量更新自己，是一部完整的撞击编年史。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.018 M⊕', vCn: '0.018 地球质量' },
+      { k: 'ORBIT', kCn: '绕木周期', v: '16.7 DAYS', vCn: '16.7 天' },
+      { k: 'DISTANCE', kCn: '距木星', v: '1,883,000 KM', vCn: '188 万千米' },
+      { k: 'SURFACE', kCn: '表面特征', v: 'VALHALLA BASIN · DENSE CRATERS', vCn: '瓦尔哈拉撞击盆 · 密集陨坑' },
+      { k: 'VISITOR', kCn: '探测器', v: 'GALILEO (1995–2003)', vCn: '伽利略号（1995–2003）' },
+    ],
+  },
+  titan: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 5150,
+    blurb: 'The only moon with a thick atmosphere — orange nitrogen haze hides rivers, rain and lakes of liquid methane.',
+    blurbCn: '唯一拥有浓厚大气的卫星——橙色氮霾之下，藏着液态甲烷的河流、降雨与湖泊。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.023 M⊕', vCn: '0.023 地球质量' },
+      { k: 'ORBIT', kCn: '绕土周期', v: '15.9 DAYS', vCn: '15.9 天' },
+      { k: 'DISTANCE', kCn: '距土星', v: '1,221,900 KM', vCn: '122 万千米' },
+      { k: 'SURFACE', kCn: '表面特征', v: 'METHANE LAKES · ORANGE HAZE', vCn: '甲烷湖泊 · 橙色霾层' },
+      { k: 'VISITOR', kCn: '探测器', v: 'CASSINI–HUYGENS (2004–2017)', vCn: '卡西尼–惠更斯号（2004–2017）' },
+    ],
+  },
+  enceladus: {
+    type: 'NATURAL SATELLITE', typeCn: '天然卫星', diameterKm: 504,
+    blurb: "A tiny bright snowball spraying salty ice plumes from a south-polar ocean — Saturn's E ring is built from its spray.",
+    blurbCn: '一颗明亮的冰雪小球，从南极冰下海洋向太空喷出含盐冰羽——土星的 E 环正是由它造就。',
+    rows: [
+      { k: 'MASS', kCn: '质量', v: '0.00002 M⊕', vCn: '0.00002 地球质量' },
+      { k: 'ORBIT', kCn: '绕土周期', v: '1.37 DAYS', vCn: '1.37 天' },
+      { k: 'DISTANCE', kCn: '距土星', v: '238,000 KM', vCn: '23.8 万千米' },
+      { k: 'SURFACE', kCn: '表面特征', v: 'TIGER STRIPES · ICE PLUMES', vCn: '南极虎纹 · 冰羽喷泉' },
+      { k: 'VISITOR', kCn: '探测器', v: 'CASSINI FLYBYS (2005–2015)', vCn: '卡西尼号飞掠（2005–2015）' },
     ],
   },
   mercury: {

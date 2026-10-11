@@ -9,7 +9,9 @@ import {
   PLANETS, SUN_RADIUS, AU_UNITS, DAYS_PER_SECOND,
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
-  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS } from './data';
+  ASTEROID_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS,
+  MOON_SYS, MOON_HOST } from './data';
+import type { MoonSysSpec } from './data';
 import type { Landmark, GalaxyPoi } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
@@ -121,6 +123,7 @@ const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t 
 // anchor-relay transition constants
 const GX_SUN_WIN: [number, number] = [0.26, 0.45]; // the Sun shrinks into the star you keep watching
 const GX_ORIGIN = new THREE.Vector3();             // the anchor the gaze never leaves
+const MOON_SYS_IDS = new Set(Object.keys(MOON_HOST)); // lazily-built moon-system bodies
 
 // atmosphere rim settings per planet
 const ATMO: Record<string, { color: number; k: number; scale: number }> = {
@@ -151,6 +154,8 @@ export class SolarEngine {
   private hillOn = false;
   private moonHill: THREE.Mesh | null = null;   // wireframe cage: gravitational domain
   private moonHalo: THREE.Mesh | null = null;   // fresnel shell: focus highlight
+  private moonSysBuilt = new Set<string>();      // lazy: built on first host focus/globe
+  private moonHalos = new Map<string, THREE.Mesh>();
   private sky: THREE.Mesh | null = null;
   // globe view ("specimen mode") state
   private globe: {
@@ -512,6 +517,106 @@ export class SolarEngine {
     const node: PlanetNode = { spec, pivot, mesh, body, angle: 0, period: 0, label, orbitRing: ring };
     this.planets.push(node);
     this.moonNode = node;
+  }
+
+  // fresnel focus halo — the same shell the Moon wears, factored for reuse
+  private makeFocusHalo(radius: number, color: number): THREE.Mesh {
+    const haloMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      uniforms: {
+        uStrength: { value: 0 },
+        uColor: { value: new THREE.Color(color) },
+      },
+      vertexShader: `
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal);
+          vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform float uStrength; uniform vec3 uColor;
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.5);
+          gl_FragColor = vec4(uColor, rim * uStrength);
+        }`,
+    });
+    return new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 24), haloMat);
+  }
+
+  // moon systems deploy lazily — built the first time the host is focused or
+  // globe-viewed, then they live in this.planets like every other body
+  private ensureMoonSystem(hostId: 'jupiter' | 'saturn') {
+    if (this.moonSysBuilt.has(hostId)) return;
+    this.moonSysBuilt.add(hostId);
+    for (const spec of MOON_SYS[hostId]) {
+      const pivot = new THREE.Group();
+      this.scene.add(pivot);
+      const body = new THREE.Group();
+      body.scale.setScalar(this.params.planetScale);
+      pivot.add(body);
+
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(spec.radius, 24, 18),
+        new THREE.MeshStandardMaterial({ map: planetTexture(spec.tex), roughness: 1 }),
+      );
+      mesh.userData.planetId = spec.id;
+      body.add(mesh);
+      // a drop-in upgrade: place textures/2k_<id>.jpg next to the other textures
+      // and the real photo skin replaces the procedural one
+      new THREE.TextureLoader().load(`textures/2k_${spec.id}.jpg`, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        (mesh.material as THREE.MeshStandardMaterial).map = tex;
+        (mesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
+      }, undefined, () => {});
+
+      // generous invisible hit-proxy so even Enceladus is easy to click
+      const proxy = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(spec.radius * 2.5, 0.35), 8, 6),
+        new THREE.MeshBasicMaterial({ visible: false }),
+      );
+      proxy.userData.planetId = spec.id;
+      body.add(proxy);
+      this.pickMeshes.push(proxy);
+
+      // orbit ring — same tilted-circle convention as the Moon's
+      const ringPts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 96; i++) {
+        const t = (i / 96) * Math.PI * 2;
+        ringPts.push(new THREE.Vector3(
+          Math.cos(t) * spec.distance,
+          Math.sin(t) * Math.sin(spec.inclination * DEG) * spec.distance,
+          Math.sin(t) * Math.cos(spec.inclination * DEG) * spec.distance,
+        ));
+      }
+      const ring = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(ringPts),
+        new THREE.LineBasicMaterial({ color: 0x8a94a8, transparent: true, opacity: 0.3 }),
+      );
+      pivot.add(ring);
+
+      const halo = this.makeFocusHalo(spec.radius * 1.18, new THREE.Color(spec.color).getHex());
+      body.add(halo);
+      this.moonHalos.set(spec.id, halo);
+
+      const label = this.makeLabel(spec);
+      this.planets.push({ spec, pivot, mesh, body, angle: 0, period: 0, label, orbitRing: ring });
+    }
+    this.toast(STR[this.lang].toast.moonSys);
+  }
+
+  // chip UI entry — focus any body, deploying its moon system on the way
+  focusBodyById(id: string) {
+    const host = MOON_HOST[id];
+    if (host) this.ensureMoonSystem(host);
+    if (id === 'jupiter' || id === 'saturn') this.ensureMoonSystem(id);
+    const node = this.planets.find(p => p.spec.id === id);
+    if (node) this.focusPlanet(node);
   }
 
   // ISS — showcase orbit around Earth (real-time, not sim-clock driven)
@@ -1377,6 +1482,7 @@ export class SolarEngine {
   }
 
   focusPlanet(node: PlanetNode) {
+    if (node.spec.id === 'jupiter' || node.spec.id === 'saturn') this.ensureMoonSystem(node.spec.id);
     this.setCine(false);
     this.probeFollow = false;
     if (this.surface) this.exitSurfaceView(true);
@@ -2281,6 +2387,7 @@ export class SolarEngine {
   private static GLOBEABLE = new Set([
     'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn',
     'uranus', 'neptune', 'pluto', 'moon', 'ceres', 'vesta',
+    'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus',
   ]);
 
   enterGlobeView(node?: PlanetNode) {
@@ -2296,9 +2403,12 @@ export class SolarEngine {
     this.setCine(false);
     this.tween = null;
 
+    if (target.spec.id === 'jupiter' || target.spec.id === 'saturn') this.ensureMoonSystem(target.spec.id);
     const sys = new Set<string>([target.spec.id]);
     if (target.spec.id === 'earth') ['moon', 'iss', 'orbiter'].forEach(id => sys.add(id));
     if (target.spec.id === 'moon') sys.add('orbiter');
+    const hostMoons = MOON_SYS[target.spec.id as 'jupiter' | 'saturn'];
+    if (hostMoons) hostMoons.forEach(m => sys.add(m.id));
 
     this.globe = {
       node: target, sys,
@@ -3483,6 +3593,29 @@ export class SolarEngine {
             const want = this.focus === p && !onMoonSurface ? 0.65 : 0;
             hm.uniforms.uStrength.value += (want - hm.uniforms.uStrength.value) * Math.min(1, dt * 3);
           }
+        }
+      } else if (MOON_SYS_IDS.has(p.spec.id)) {
+        // moon-system bodies: showcase clock (real-time, period-proportional),
+        // tidally locked, riding their host's position
+        const ms = p.spec as MoonSysSpec;
+        const host = this.planets.find(pl => pl.spec.id === ms.host);
+        if (host) {
+          p.pivot.position.copy(host.body.position);
+          const A = this.pulseT * ((Math.PI * 2) / ms.showSecs) + ms.phase;
+          const I = ms.inclination * DEG;
+          p.body.position.set(
+            Math.cos(A) * ms.distance,
+            Math.sin(A) * Math.sin(I) * ms.distance,
+            Math.sin(A) * Math.cos(I) * ms.distance,
+          );
+          p.mesh.rotation.y = -A; // tidally locked
+          const halo = this.moonHalos.get(p.spec.id);
+          if (halo) {
+            const hm = halo.material as THREE.ShaderMaterial;
+            const want = this.focus === p && !this.globe ? 0.65 : 0;
+            hm.uniforms.uStrength.value += (want - hm.uniforms.uStrength.value) * Math.min(1, dt * 3);
+          }
+          if (p.orbitRing) p.orbitRing.visible = this.globe?.node !== p && this.surface?.node !== p;
         }
       } else if (p.spec.id === 'orbiter') {
         // pivot glued to the Moon; real-time polar showcase orbit (not sim-clock)

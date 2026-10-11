@@ -21,6 +21,8 @@ export interface Strings {
   params: string;
   hud: string;
   deckHide: string;
+  moonSysJupiter: string;
+  moonSysSaturn: string;
   deckShow: string;
   soundOn: string;
   soundOff: string;
@@ -178,6 +180,7 @@ export interface Strings {
     galaxyOn: string;
     galaxyOff: string;
     galPrep: string;
+    moonSys: string;
     galNoExp: string;
     galNoProbe: string;
     galReturning: string;
@@ -222,6 +225,8 @@ export const STR: Record<Lang, Strings> = {
     params: 'PARAMS',
     hud: 'HUD',
     deckHide: 'HIDE PANEL · X',
+    moonSysJupiter: 'JOVIAN SYSTEM',
+    moonSysSaturn: 'SATURNIAN SYSTEM',
     deckShow: 'SHOW PANEL · X',
     soundOn: '🔊 SOUND: ON',
     soundOff: '🔇 SOUND: OFF',
@@ -378,6 +383,7 @@ export const STR: Record<Lang, Strings> = {
       globeNoProbe: 'GLOBE VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
       galaxyOn: 'GALAXY VIEW — SIM TIME FROZEN',
       galPrep: 'PLOTTING COURSE — COMPILING STAR CHARTS…',
+      moonSys: 'MOON SYSTEM DEPLOYED — CLICK A MOON TO EXPLORE',
       galaxyOff: 'BACK TO THE SOLAR SYSTEM — TIME RESUMED',
       galNoExp: 'N-BODY EXPERIMENT BLOCKED IN GALAXY VIEW',
       galNoProbe: 'GALAXY VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
@@ -421,6 +427,8 @@ export const STR: Record<Lang, Strings> = {
     params: '参数',
     hud: '界面',
     deckHide: '收起面板 · X',
+    moonSysJupiter: '木星系统',
+    moonSysSaturn: '土星系统',
     deckShow: '展开面板 · X',
     soundOn: '🔊 音效: 开',
     soundOff: '🔇 音效: 关',
@@ -577,6 +585,7 @@ export const STR: Record<Lang, Strings> = {
       globeNoProbe: '球体视图与探测器模式互斥',
       galaxyOn: '已进入银河视图 — 时间已冻结',
       galPrep: '航线计算中 — 正在编译星图…',
+      moonSys: '卫星系统已展开 — 点击卫星继续探索',
       galaxyOff: '已返回太阳系，时间恢复流动',
       galNoExp: '银河视图中无法启动 N 体实验',
       galNoProbe: '银河视图与探测器模式互斥',
