@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
-import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC, MINI_GROUPS, NEW_MOON_JD } from './solar/data';
+import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC, MINI_GROUPS, NEW_MOON_JD, MISSIONS } from './solar/data';
 import { rangeFromEarth, rangeSeries, fmtLightTime } from './solar/range';
 import { CITIES, tonightReport, fmtLocalH, compass, magClass } from './solar/observe';
 import { BASE_JD } from './solar/ephem';
@@ -50,7 +50,7 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
-  const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null, probe: null });
+  const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null, probe: null, mission: null });
   const [dossierOpen, setDossierOpen] = useState(true);
   const [hudOn, setHudOn] = useState(true);
   const [deckOn, setDeckOn] = useState(() => { try { return localStorage.getItem('helion.deck') !== '0'; } catch { return true; } });
@@ -463,6 +463,44 @@ export default function App() {
             })}
           </div>
         )}
+        {tel.mission && (() => {
+          const ms = MISSIONS[tel.mission.craft];
+          if (!ms) return null;
+          const endYr = 1970 + Date.now() / (365.25 * 86400000);
+          const y0 = ms.launchYr;
+          const ev = tel.mission.eventIdx >= 0 ? ms.keys[tel.mission.eventIdx] : null;
+          return (
+            <>
+              {ev && (
+                <div id="mission-card" className="ctl">
+                  <div className="mc2-yr">{ev.yr === 0 ? fmtSimDate(tel.simDays) : Math.floor(ev.yr)}</div>
+                  <div className="mc2-label">{lang === 'zh' ? ev.labelCn : ev.label}</div>
+                  <div className="mc2-dist">
+                    {ev.distAU > 0 ? `${ev.distAU.toFixed(1)} AU · ${fmtLightTime(ev.distAU, lang === 'zh')}` : ''}
+                  </div>
+                  <button className="hbtn wide" onClick={() => eng()?.toggleMissionPlay()}>{t.missionContinue}</button>
+                </div>
+              )}
+              <div id="mission-bar" className="ctl">
+                <button className="hbtn" onClick={() => eng()?.toggleMissionPlay()}>
+                  {tel.mission.playing ? '⏸' : '▶'}
+                </button>
+                <button className="hbtn" onClick={() => eng()?.cycleMissionSpeed()}>⏩</button>
+                <div className="mb-track">
+                  {ms.keys.map((k, i) => {
+                    const ky = k.yr === 0 ? endYr : k.yr;
+                    return <span key={i} className={tel.mission!.eventIdx === i ? 'mb-tick hot' : 'mb-tick'}
+                      style={{ left: `${((ky - y0) / (endYr - y0)) * 100}%` }} />;
+                  })}
+                  <input type="range" min={y0} max={endYr} step={0.05} value={tel.mission.t}
+                    onChange={(e) => eng()?.setMissionT(parseFloat(e.target.value))} />
+                </div>
+                <span className="mb-yr">{tel.mission.t.toFixed(1)}</span>
+                <button className="hbtn" onClick={() => eng()?.exitMission()}>{t.missionExit}</button>
+              </div>
+            </>
+          );
+        })()}
         <div id="hint" className={hintShow ? 'show' : ''}>
           {t.bottomHint}
         </div>
@@ -532,7 +570,7 @@ export default function App() {
         <div className="p-attrib">{t.attrib}</div>
       </div>
 
-      {dossier && dossierOpen && (
+      {dossier && dossierOpen && !tel.mission && (
         <div id="dossier" className="ctl">
           <div className="p-head">
             <span className="p-title">{snap?.focusName} · {t.dossier}</span>
@@ -599,6 +637,12 @@ export default function App() {
             );
           })()}
           <div className="d-blurb">{lang === 'zh' ? dossier.blurbCn : dossier.blurb}</div>
+          {MISSIONS[focusId] && (
+            <button className="hbtn wide" style={{ marginTop: 8 }}
+              onClick={() => eng()?.enterMission(focusId)}>
+              {t.missionBtn}
+            </button>
+          )}
           {focusId !== 'sun' && !['iss', 'orbiter', 'halley', 'voyager1', 'voyager2'].includes(focusId) && (
             <button className="hbtn wide" style={{ marginTop: 8 }}
               onClick={() => eng()?.enterGlobeView()}>

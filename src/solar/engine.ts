@@ -10,8 +10,8 @@ import {
   keplerPeriod, CINE_SHOTS, VIEWS, HALLEY_SPEC, VOYAGER_SPECS,
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
   ASTEROID_SPECS, DWARF_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS,
-  MOON_SYS, MOON_HOST } from './data';
-import type { MoonSysSpec } from './data';
+  MOON_SYS, MOON_HOST, MISSIONS } from './data';
+import type { MoonSysSpec, MissionKey } from './data';
 import type { Landmark, GalaxyPoi } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
@@ -88,6 +88,14 @@ export interface Telemetry {
   simDays: number;
   focusAU: number | null;
   probe: ProbeTelemetry | null;
+  mission: MissionTelemetry | null;
+}
+
+export interface MissionTelemetry {
+  craft: string;
+  t: number;           // decimal year
+  playing: boolean;
+  eventIdx: number;    // -1 = none (milestone pause card)
 }
 
 const BASE_DATE = Date.UTC(2026, 6, 17);
@@ -232,6 +240,16 @@ export class SolarEngine {
   private focusOffset = new THREE.Vector3();
   private speed = 1;
   private simDays = 0;
+  private mission: {
+    spec: import('./data').MissionSpec;
+    t: number;              // decimal year
+    playing: boolean;
+    speed: number;          // years per second
+    curve: THREE.CatmullRomCurve3;
+    yrs: number[];          // resolved keyframe years ('today' → current year)
+    eventIdx: number;       // milestone pause card; -1 = none
+    node: PlanetNode;
+  } | null = null;
   private prevSpeed = 1;
   private eventCache: { fromDay: number; events: AstroEvent[] } | null = null;
   private halleyLastDay = 0;
@@ -617,6 +635,111 @@ export class SolarEngine {
     if (id === 'jupiter' || id === 'saturn') this.ensureMoonSystem(id);
     const node = this.planets.find(p => p.spec.id === id);
     if (node) this.focusPlanet(node);
+  }
+
+  // ------------------------------------------------- mission replay (方案②)
+  enterMission(craftId: string) {
+    const spec = MISSIONS[craftId];
+    const node = this.planets.find(p => p.spec.id === craftId);
+    if (!spec || !node) return;
+    const nowYr = 1970 + Date.now() / (365.25 * 86400000);
+    // resolve keyframes to scene positions at THIS moment — encounters
+    // rendezvous with the planets wherever they currently stand
+    const pts: THREE.Vector3[] = [];
+    const yrs: number[] = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const k of spec.keys) {
+      let pos: THREE.Vector3;
+      if (k.target === 'today') {
+        const v = VOYAGERS.find(v => v.id === craftId)!;
+        pos = new THREE.Vector3(...Object.values(voyagerScenePos(v, this.simDays)) as [number, number, number]);
+        yrs.push(nowYr);
+      } else if (k.target === 'out') {
+        const v = VOYAGERS.find(v => v.id === craftId)!;
+        pos = new THREE.Vector3(
+          105 * Math.cos(v.lat) * Math.cos(v.lon),
+          105 * Math.sin(v.lat),
+          105 * Math.cos(v.lat) * Math.sin(v.lon),
+        );
+        yrs.push(k.yr);
+      } else {
+        const host = this.planets.find(p => p.spec.id === k.target);
+        if (!host) return;
+        // flyby offset: swing BESIDE the planet, not through its center
+        const side = host.body.position.clone().cross(up).normalize()
+          .multiplyScalar(Math.max(host.spec.radius * 3, 1.2));
+        pos = host.body.position.clone().add(side);
+        yrs.push(k.yr);
+      }
+      pts.push(pos);
+    }
+    // smooth cruise segments between keyframes
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    this.mission = { spec, t: yrs[0], playing: true, speed: 1.5, curve, yrs, eventIdx: -1, node };
+    this.focusPlanet(node);
+    this.toast(this.lang === 'zh' ? `任务回放 — ${spec.nameCn}` : `MISSION REPLAY — ${spec.name}`);
+    this.emitSnapshot();
+  }
+
+  exitMission() {
+    if (!this.mission) return;
+    this.mission = null; // craft snaps back to its real position next frame
+    this.toast(this.lang === 'zh' ? '任务回放结束' : 'MISSION REPLAY ENDED');
+    this.emitSnapshot();
+  }
+
+  setMissionT(t: number) {
+    if (!this.mission) return;
+    this.mission.t = t;
+    this.mission.eventIdx = -1;
+  }
+
+  toggleMissionPlay() {
+    if (!this.mission) return;
+    const m = this.mission;
+    if (m.eventIdx >= 0) { m.eventIdx = -1; m.playing = true; return; } // resume from milestone
+    if (!m.playing && m.t >= m.yrs[m.yrs.length - 1]) m.t = m.yrs[0];    // replay from start
+    m.playing = !m.playing;
+  }
+
+  cycleMissionSpeed() {
+    if (!this.mission) return;
+    const speeds = [1.5, 4, 12];
+    const i = speeds.indexOf(this.mission.speed);
+    this.mission.speed = speeds[(i + 1) % speeds.length];
+  }
+
+  private missionPos(m: NonNullable<SolarEngine['mission']>): THREE.Vector3 {
+    const n = m.yrs.length;
+    const t = Math.min(Math.max(m.t, m.yrs[0]), m.yrs[n - 1]);
+    let k = 0;
+    while (k < n - 2 && t > m.yrs[k + 1]) k++;
+    const u = (t - m.yrs[k]) / Math.max(1e-9, m.yrs[k + 1] - m.yrs[k]);
+    return m.curve.getPoint((k + u) / (n - 1));
+  }
+
+  private stepMission(dt: number) {
+    const m = this.mission;
+    if (!m) return;
+    // drive the craft along the keyframe curve
+    m.node.body.position.copy(this.missionPos(m));
+    if (!m.playing) return;
+    const prevT = m.t;
+    m.t += dt * m.speed;
+    const end = m.yrs[m.yrs.length - 1];
+    // milestone crossing → pause + caption card
+    for (let i = 0; i < m.spec.keys.length; i++) {
+      const ky = m.spec.keys[i].yr === 0 ? end : m.spec.keys[i].yr;
+      if (ky > prevT && ky <= m.t) {
+        m.t = ky;
+        m.eventIdx = i;
+        m.playing = false;
+        const k = m.spec.keys[i];
+        this.toast(this.lang === 'zh' ? k.labelCn : k.label);
+        break;
+      }
+    }
+    if (m.t >= end) { m.t = end; m.playing = false; }
   }
 
   // ISS — showcase orbit around Earth (real-time, not sim-clock driven)
@@ -1971,6 +2094,7 @@ export class SolarEngine {
   }
 
   enterGalaxyView() {
+    if (this.mission) this.exitMission();
     const t = STR[this.lang];
     if (this.experiment) { this.toast(t.toast.galNoExp); return; }
     if (this.probe) { this.toast(t.toast.galNoProbe); return; }
@@ -3562,6 +3686,7 @@ export class SolarEngine {
     const rawDt = this.lastTime === 0 ? 0.016 : (now - this.lastTime) / 1000;
     this.lastTime = now;
     const dt = Math.min(rawDt, 0.25);
+    this.stepMission(dt);
     this.speed = this.params.speed;
     const simDt = dt * this.speed;
     this.simDays += simDt * DAYS_PER_SECOND;
@@ -3652,6 +3777,7 @@ export class SolarEngine {
         p.body.position.set(pos.x, pos.y, pos.z);
         this.updateCometTail(p.body.position);
       } else if (p.spec.id === 'voyager1' || p.spec.id === 'voyager2') {
+        if (this.mission && this.mission.node === p) continue; // replay drives it
         const rec = this.voyagers.find(r => r.v.id === p.spec.id);
         if (rec) {
           const pos = voyagerScenePos(rec.v, this.simDays);
@@ -3767,6 +3893,12 @@ export class SolarEngine {
         simDays: this.simDays,
         focusAU: focusVoy ? voyagerAU(focusVoy, this.simDays) : null,
         probe: this.getProbeTelemetry(),
+        mission: this.mission ? {
+          craft: this.mission.spec.craft,
+          t: this.mission.t,
+          playing: this.mission.playing,
+          eventIdx: this.mission.eventIdx,
+        } : null,
       });
     }
 

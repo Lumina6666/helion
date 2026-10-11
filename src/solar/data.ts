@@ -407,6 +407,42 @@ export const DIST_AU: Record<string, number> = {
   eris: 67.7, haumea: 43.0, makemake: 45.6,
 };
 
+// ------------------------------------------------------------ mission replay
+// Voyager grand-tour keyframes. yr = decimal year; target = scene body id or
+// 'out' (interstellar direction); distAU = real range from Earth at the event.
+export interface MissionKey {
+  yr: number;
+  target: string;      // planet id | 'out' | 'today'
+  label: string; labelCn: string;
+  distAU: number;
+}
+export interface MissionSpec { craft: string; name: string; nameCn: string; launchYr: number; keys: MissionKey[] }
+
+export const MISSIONS: Record<string, MissionSpec> = {
+  voyager1: {
+    craft: 'voyager1', name: 'VOYAGER 1', nameCn: '旅行者 1 号', launchYr: 1977.68,
+    keys: [
+      { yr: 1977.68, target: 'earth', label: 'LAUNCH — CAPE CANAVERAL, TITAN IIIE', labelCn: '发射 — 卡纳维拉尔角，泰坦 IIIE 火箭', distAU: 0.0 },
+      { yr: 1979.16, target: 'jupiter', label: 'JUPITER FLYBY — 349,000 KM · GREAT RED SPOT UP CLOSE', labelCn: '木星飞掠 — 最近 34.9 万千米 · 大红斑特写', distAU: 4.7 },
+      { yr: 1980.87, target: 'saturn', label: 'SATURN FLYBY — 124,000 KM · TITAN DETOUR', labelCn: '土星飞掠 — 最近 12.4 万千米 · 转向土卫六', distAU: 9.5 },
+      { yr: 2012.65, target: 'out', label: 'HELIOPAUSE CROSSED — 121.6 AU · INTERSTELLAR SPACE', labelCn: '越过日球层顶 — 121.6 AU · 进入星际空间', distAU: 121.6 },
+      { yr: 0, target: 'today', label: 'TODAY — STILL WHISPERING HOME AT 17 KM/S', labelCn: '今天 — 仍以 17 千米/秒向地球传回信号', distAU: 0 },
+    ],
+  },
+  voyager2: {
+    craft: 'voyager2', name: 'VOYAGER 2', nameCn: '旅行者 2 号', launchYr: 1977.63,
+    keys: [
+      { yr: 1977.63, target: 'earth', label: 'LAUNCH — 16 DAYS BEFORE VOYAGER 1', labelCn: '发射 — 比旅行者 1 号早 16 天', distAU: 0.0 },
+      { yr: 1979.50, target: 'jupiter', label: 'JUPITER FLYBY — 570,000 KM', labelCn: '木星飞掠 — 最近 57 万千米', distAU: 4.9 },
+      { yr: 1981.64, target: 'saturn', label: 'SATURN FLYBY — 101,000 KM', labelCn: '土星飞掠 — 最近 10.1 万千米', distAU: 9.7 },
+      { yr: 1986.06, target: 'uranus', label: 'URANUS FLYBY — 81,500 KM · FIRST & ONLY VISIT', labelCn: '天王星飞掠 — 最近 8.15 万千米 · 史上唯一造访', distAU: 19.3 },
+      { yr: 1989.65, target: 'neptune', label: 'NEPTUNE FLYBY — 4,950 KM · CLOSEST OF THE TOUR', labelCn: '海王星飞掠 — 最近仅 4,950 千米 · 全程最近', distAU: 30.1 },
+      { yr: 2018.85, target: 'out', label: 'HELIOPAUSE CROSSED — 119 AU', labelCn: '越过日球层顶 — 119 AU', distAU: 119.0 },
+      { yr: 0, target: 'today', label: 'TODAY — THE LONGEST MISSION EVER FLOWN', labelCn: '今天 — 人类飞行最久的任务', distAU: 0 },
+    ],
+  },
+};
+
 // ------------------------------------------------------------ mini-worlds browser
 export interface MiniGroup { cat: string; catCn: string; items: Array<{ id: string; name: string; cn: string }> }
 export const MINI_GROUPS: MiniGroup[] = [

@@ -79,6 +79,9 @@ export interface Strings {
   tonightBinoc: string;
   tonightScope: string;
   tonightNo: string;
+  missionBtn: string;
+  missionExit: string;
+  missionContinue: string;
   timeBtn: string;
   timePanel: string;
   pause: string;
@@ -298,6 +301,9 @@ export const STR: Record<Lang, Strings> = {
     tonightBinoc: 'BINOCULARS',
     tonightScope: 'TELESCOPE',
     tonightNo: 'NOT VISIBLE',
+    missionBtn: '▶ MISSION REPLAY',
+    missionExit: 'EXIT',
+    missionContinue: 'CONTINUE',
     timeBtn: '⏱ TIME',
     timePanel: 'TIME CONTROL',
     pause: '⏸ PAUSE',
@@ -515,6 +521,9 @@ export const STR: Record<Lang, Strings> = {
     tonightBinoc: '双筒',
     tonightScope: '望远镜',
     tonightNo: '不可见',
+    missionBtn: '▶ 任务回放',
+    missionExit: '退出',
+    missionContinue: '继续',
     timeBtn: '⏱ 时间',
     timePanel: '时间控制',
     pause: '⏸ 暂停',
