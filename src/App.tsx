@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
-import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST } from './solar/data';
+import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC } from './solar/data';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
 import type { AstroEvent } from './solar/events';
 import { STR } from './solar/i18n';
@@ -344,12 +344,15 @@ export default function App() {
           <button id="deck-handle" className="ctl" title={t.deckShow} onClick={toggleDeck}>❮</button>
         )}
         {(() => {
-          const sysHost = (focusId === 'jupiter' || focusId === 'saturn') ? focusId : MOON_HOST[focusId];
+          const sysHost = (focusId === 'jupiter' || focusId === 'saturn' || focusId === 'earth') ? focusId
+            : (focusId === 'moon' ? 'earth' : MOON_HOST[focusId]);
           if (!sysHost) return null;
+          const moons = sysHost === 'earth' ? [MOON_SPEC] : MOON_SYS[sysHost];
+          const title = sysHost === 'jupiter' ? t.moonSysJupiter : sysHost === 'saturn' ? t.moonSysSaturn : t.moonSysEarth;
           return (
             <div id="moon-chips" className="ctl">
-              <span className="mc-title">{sysHost === 'jupiter' ? t.moonSysJupiter : t.moonSysSaturn}</span>
-              {MOON_SYS[sysHost].map((m) => (
+              <span className="mc-title">{title}</span>
+              {moons.map((m) => (
                 <button key={m.id}
                   className={focusId === m.id ? 'mc-chip on' : 'mc-chip'}
                   onClick={() => eng()?.focusBodyById(m.id)}>

@@ -23,6 +23,7 @@ export interface Strings {
   deckHide: string;
   moonSysJupiter: string;
   moonSysSaturn: string;
+  moonSysEarth: string;
   deckShow: string;
   soundOn: string;
   soundOff: string;
@@ -227,6 +228,7 @@ export const STR: Record<Lang, Strings> = {
     deckHide: 'HIDE PANEL · X',
     moonSysJupiter: 'JOVIAN SYSTEM',
     moonSysSaturn: 'SATURNIAN SYSTEM',
+    moonSysEarth: 'EARTH SYSTEM',
     deckShow: 'SHOW PANEL · X',
     soundOn: '🔊 SOUND: ON',
     soundOff: '🔇 SOUND: OFF',
@@ -429,6 +431,7 @@ export const STR: Record<Lang, Strings> = {
     deckHide: '收起面板 · X',
     moonSysJupiter: '木星系统',
     moonSysSaturn: '土星系统',
+    moonSysEarth: '地月系统',
     deckShow: '展开面板 · X',
     soundOn: '🔊 音效: 开',
     soundOff: '🔇 音效: 关',
