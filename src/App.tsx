@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { SolarEngine } from './solar/engine';
 import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
-import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC, MINI_GROUPS } from './solar/data';
+import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC, MINI_GROUPS, NEW_MOON_JD } from './solar/data';
 import { rangeFromEarth, rangeSeries, fmtLightTime } from './solar/range';
+import { CITIES, tonightReport, fmtLocalH, compass, magClass } from './solar/observe';
 import { BASE_JD } from './solar/ephem';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
 import type { AstroEvent } from './solar/events';
@@ -56,6 +57,9 @@ export default function App() {
   const toggleDeck = () => setDeckOn(v => { const n = !v; try { localStorage.setItem('helion.deck', n ? '1' : '0'); } catch { /* private mode */ } return n; });
   const [paramsOpen, setParamsOpen] = useState(false);
   const [miniOpen, setMiniOpen] = useState(false);
+  const [tonightOpen, setTonightOpen] = useState(false);
+  const [cityId, setCityId] = useState(() => localStorage.getItem('helion-city') || 'beijing');
+  const [customLoc, setCustomLoc] = useState<{ lat: number; lon: number; tz: number } | null>(null);
   const [introGone, setIntroGone] = useState(false);
   const [introFading, setIntroFading] = useState(false);
   const [toast, setToast] = useState('');
@@ -222,6 +226,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [focusId, Math.floor(tel.simDays), !!dossier, !!range],
   );
+  const city = customLoc ?? CITIES.find((c) => c.id === cityId) ?? CITIES[0];
+  const tonight = useMemo(
+    () => tonightReport(jdNow, city, NEW_MOON_JD),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [Math.floor(jdNow), cityId, customLoc],
+  );
 
   // ---- time panel helpers
   const evDesc = (ev: { type: string; a: string; b: string }): string => {
@@ -338,6 +348,9 @@ export default function App() {
           <button className={`hbtn wide ${miniOpen ? 'active' : ''}`} onClick={() => setMiniOpen(v => !v)}>
             {t.miniWorlds}
           </button>
+          <button className={`hbtn wide ${tonightOpen ? 'active' : ''}`} onClick={() => setTonightOpen(v => !v)}>
+            {t.tonight}
+          </button>
           <button className={`hbtn wide ${timeOpen ? 'active' : ''}`} onClick={() => setTimeOpen(v => !v)}>
             {t.timeBtn}
           </button>
@@ -391,6 +404,63 @@ export default function App() {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+        {tonightOpen && (
+          <div id="tonight" className="ctl">
+            <div className="p-head">
+              <span className="p-title">{t.tonight} · {fmtSimDate(tel.simDays)}</span>
+              <button className="hbtn" onClick={() => setTonightOpen(false)}>{t.dossierClose}</button>
+            </div>
+            <div className="tn-loc">
+              <select
+                className="hbtn"
+                value={customLoc ? '__custom' : cityId}
+                onChange={(e) => {
+                  if (e.target.value === '__custom') return;
+                  setCustomLoc(null);
+                  setCityId(e.target.value);
+                  localStorage.setItem('helion-city', e.target.value);
+                }}
+              >
+                {customLoc && <option value="__custom">{lang === 'zh' ? '我的位置' : 'MY LOCATION'}</option>}
+                {CITIES.map((c) => (
+                  <option key={c.id} value={c.id}>{lang === 'zh' ? c.cn : c.name}</option>
+                ))}
+              </select>
+              <button
+                className="hbtn"
+                onClick={() => {
+                  navigator.geolocation?.getCurrentPosition((pos) => {
+                    setCustomLoc({ lat: pos.coords.latitude, lon: pos.coords.longitude, tz: -new Date().getTimezoneOffset() / 60 });
+                  });
+                }}
+              >{t.tonightGeo}</button>
+            </div>
+            <div className="d-row"><span>{t.tonightDuskDawn}</span><span className="p-val">
+              {tonight.duskH != null && tonight.dawnH != null ? `${fmtLocalH(tonight.duskH)} → ${fmtLocalH(tonight.dawnH)}` : '—'}
+            </span></div>
+            <div className="d-row"><span>{t.tonightMoonAge}</span><span className="p-val">
+              {tonight.moonAgeDays.toFixed(1)}{lang === 'zh' ? ' 天' : ' D'} · {Math.round(tonight.moonIllum * 100)}%
+            </span></div>
+            {tonight.sights.map((sg) => {
+              const spec = PLANETS.find((pl) => pl.id === sg.id);
+              const cls = magClass(sg.mag, sg.id);
+              const clsLabel = cls === 'naked' ? t.tonightNaked : cls === 'binoc' ? t.tonightBinoc : t.tonightScope;
+              return (
+                <div className={sg.visible ? 'tn-row visible' : 'tn-row'} key={sg.id}>
+                  <span className="tn-name">{lang === 'zh' ? spec?.cn : spec?.name}</span>
+                  {sg.visible && sg.startH != null && sg.endH != null && sg.bestH != null ? (
+                    <span className="tn-detail">
+                      {fmtLocalH(sg.startH)}–{fmtLocalH(sg.endH)} · {compass(sg.azAtBest, lang === 'zh')} {sg.maxAlt.toFixed(0)}° · {sg.mag.toFixed(1)}m
+                      <em className={`tn-cls ${cls}`}>{clsLabel}</em>
+                    </span>
+                  ) : (
+                    <span className="tn-detail dim">{t.tonightNo}</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         <div id="hint" className={hintShow ? 'show' : ''}>

@@ -892,6 +892,49 @@ body { position: fixed; inset: 0; }
   flex-shrink: 0;
 }
 #minipanel .mg-items { display: flex; flex-wrap: wrap; gap: 5px; }
+
+/* ------------------------------------------------------------- tonight */
+#tonight {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 41;
+  width: min(400px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  background: rgba(6, 12, 20, 0.9);
+  border: 1px solid rgba(120, 200, 255, 0.18);
+  backdrop-filter: blur(8px);
+  padding: 10px 14px;
+}
+#tonight .p-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+#tonight .p-title { font-size: 9px; letter-spacing: 0.2em; color: var(--cyan); }
+#tonight .tn-loc { display: flex; gap: 6px; margin-bottom: 8px; }
+#tonight .tn-loc select { flex: 1; background: rgba(10, 20, 32, 0.9); color: var(--cyan); }
+#tonight .tn-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 4px 0 4px 6px;
+  border-left: 2px solid transparent;
+  color: var(--cyan-dim);
+}
+#tonight .tn-row.visible { border-left-color: var(--amber); color: var(--cyan); }
+#tonight .tn-name { min-width: 52px; flex-shrink: 0; }
+#tonight .tn-detail { text-align: right; }
+#tonight .tn-detail.dim { opacity: 0.5; }
+#tonight .tn-cls {
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.18em;
+  margin-left: 6px;
+  padding: 1px 4px;
+  border: 1px solid rgba(120, 200, 255, 0.25);
+}
+#tonight .tn-cls.naked { color: var(--amber); border-color: rgba(255, 190, 100, 0.4); }
 #dossier .d-row .p-val { color: var(--hud-white); }
 #dossier .d-blurb {
   margin-top: 10px;

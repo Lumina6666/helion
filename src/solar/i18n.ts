@@ -70,6 +70,15 @@ export interface Strings {
   rangeLight: string;
   rangeTrend: string;
   miniWorlds: string;
+  tonight: string;
+  tonightAt: string;
+  tonightDuskDawn: string;
+  tonightMoonAge: string;
+  tonightGeo: string;
+  tonightNaked: string;
+  tonightBinoc: string;
+  tonightScope: string;
+  tonightNo: string;
   timeBtn: string;
   timePanel: string;
   pause: string;
@@ -280,6 +289,15 @@ export const STR: Record<Lang, Strings> = {
     rangeLight: 'ONE-WAY LIGHT TIME',
     rangeTrend: 'DISTANCE TREND — TODAY CENTERED',
     miniWorlds: 'MINI WORLDS',
+    tonight: 'TONIGHT',
+    tonightAt: 'OBSERVING NIGHT',
+    tonightDuskDawn: 'DUSK → DAWN',
+    tonightMoonAge: 'MOON AGE',
+    tonightGeo: 'USE MY LOCATION',
+    tonightNaked: 'NAKED EYE',
+    tonightBinoc: 'BINOCULARS',
+    tonightScope: 'TELESCOPE',
+    tonightNo: 'NOT VISIBLE',
     timeBtn: '⏱ TIME',
     timePanel: 'TIME CONTROL',
     pause: '⏸ PAUSE',
@@ -488,6 +506,15 @@ export const STR: Record<Lang, Strings> = {
     rangeLight: '单向光行时',
     rangeTrend: '距离趋势 — 今日居中',
     miniWorlds: '小天体',
+    tonight: '今晚观测',
+    tonightAt: '观测夜',
+    tonightDuskDawn: '昏影 → 晨光',
+    tonightMoonAge: '月龄',
+    tonightGeo: '使用我的位置',
+    tonightNaked: '裸眼',
+    tonightBinoc: '双筒',
+    tonightScope: '望远镜',
+    tonightNo: '不可见',
     timeBtn: '⏱ 时间',
     timePanel: '时间控制',
     pause: '⏸ 暂停',
