@@ -1925,7 +1925,13 @@ export class SolarEngine {
       this.gxPrep = true;
       this.toast(t.toast.galPrep);
       requestAnimationFrame(() => {
-        this.renderer.compileAsync(this.scene, this.camera).then(begin, begin);
+        this.renderer.compileAsync(this.scene, this.camera).then(() => {
+          // macOS/Metal creates render pipelines at the first real draw call,
+          // not at compile/link — rehearse one frame so the transition never
+          // pays it. Galaxy layers are opacity-0: nothing visibly changes.
+          this.renderer.render(this.scene, this.camera);
+          begin();
+        }, begin);
       });
     } else {
       begin();
