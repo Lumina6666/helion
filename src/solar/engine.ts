@@ -2082,6 +2082,16 @@ export class SolarEngine {
       this.gxFadeO.push({ mat, base: mat.opacity, win });
     };
     for (const l of this.orbitLines) pushO(l.material as THREE.Material, [0.08, 0.22]);
+    // every other line joins the SAME window — local orbit circles (moon,
+    // station, voyagers) and scene-level trails must leave WITH the orbit lines
+    const extraLine = (o: THREE.Object3D) => {
+      const lo = o as THREE.Line;
+      if ((lo as unknown as { isLine?: boolean }).isLine && !(lo as unknown as { isLineLoop?: boolean }).isLineLoop) {
+        pushO(lo.material as THREE.Material | undefined, [0.08, 0.22]);
+      }
+    };
+    for (const pl of this.planets) pl.pivot.children.forEach(extraLine);
+    for (const c of this.scene.children) extraLine(c);
     if (this.sky) pushO((this.sky as THREE.Mesh).material as THREE.Material, [0.10, 0.28]);
     this.belt.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
     if (this.sunGlow1) pushO(this.sunGlow1.material as THREE.Material, [0.20, 0.40]);
