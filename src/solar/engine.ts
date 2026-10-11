@@ -188,6 +188,7 @@ export class SolarEngine {
   private gxFlash = 0;         // exposure pulse at the crossing point
   private savedFov = 55;       // camera fov before the zoom kick
   private gxSunK = 1;          // sun shrink factor for the anchor handoff
+  private gxPrep = false;      // first-visit compile gate: clock starts only after shaders are ready
   private gxFadeO: Array<{ mat: THREE.Material; base: number; win: [number, number] }> = [];
   private gxFadeS: Array<{ obj: THREE.Object3D; base: number; win: [number, number] }> = [];
   private gxLayers: Array<{ mat: THREE.Material; base: number; win: [number, number]; u: { value: number } | null }> = [];
@@ -1882,24 +1883,10 @@ export class SolarEngine {
       hidden: [],
     };
     this.setParam('speed', 0);
-    if (!this.galaxyGroup) this.buildGalaxy();
+    const firstBuild = !this.galaxyGroup;
+    if (firstBuild) this.buildGalaxy();
     this.ensureWarpCanvas();
 
-    // one continuous pull-back: watch home shrink to a star — the galaxy blooms around it
-    this.controls.enabled = false;
-    this.savedFov = this.camera.fov;
-    const fromPos = this.camera.position.clone();
-    if (fromPos.lengthSq() < 1e-6) fromPos.set(30, 20, 40);
-    const midPos = fromPos.clone().normalize().multiplyScalar(Math.max(95, fromPos.length() * 1.3));
-    midPos.y = Math.max(midPos.y, 42);
-    this.gxTrans = {
-      dir: 'toGalaxy', t: 0, dur: 8,
-      fromPos, midPos,
-      arrPos: new THREE.Vector3(36, 40, 47),
-      fromTgt: this.controls.target.clone(),
-      swapped: false, whooshed: false, boomed: false,
-    };
-    this.collectGxFade();
     // the galaxy waits in the wings at origin — every layer dark for now
     const gg = this.galaxyGroup!;
     gg.position.set(0, 0, 0);
@@ -1907,8 +1894,42 @@ export class SolarEngine {
     gg.visible = true;
     for (const L of this.gxLayers) { L.mat.opacity = 0; if (L.u) L.u.value = 0; }
     this.ensureDustShell();
-    this.toast(t.toast.galaxyOn);
-    this.emitSnapshot();
+
+    // one continuous pull-back: watch home shrink to a star — the galaxy blooms around it
+    const begin = () => {
+      this.gxPrep = false;
+      if (!this.galaxy || this.gxTrans) return; // aborted while preparing
+      this.tween = null;
+      this.focus = null;
+      this.controls.enabled = false;
+      this.savedFov = this.camera.fov;
+      const fromPos = this.camera.position.clone();
+      if (fromPos.lengthSq() < 1e-6) fromPos.set(30, 20, 40);
+      const midPos = fromPos.clone().normalize().multiplyScalar(Math.max(95, fromPos.length() * 1.3));
+      midPos.y = Math.max(midPos.y, 42);
+      this.gxTrans = {
+        dir: 'toGalaxy', t: 0, dur: 8,
+        fromPos, midPos,
+        arrPos: new THREE.Vector3(36, 40, 47),
+        fromTgt: this.controls.target.clone(),
+        swapped: false, whooshed: false, boomed: false,
+      };
+      this.collectGxFade();
+      this.toast(STR[this.lang].toast.galaxyOn);
+      this.emitSnapshot();
+    };
+
+    if (firstBuild) {
+      // first visit: compile every galaxy shader BEFORE the clock starts —
+      // the transition timeline must never pay the one-time compile stall
+      this.gxPrep = true;
+      this.toast(t.toast.galPrep);
+      requestAnimationFrame(() => {
+        this.renderer.compileAsync(this.scene, this.camera).then(begin, begin);
+      });
+    } else {
+      begin();
+    }
   }
 
   exitGalaxyView(silent = false) {
@@ -1925,7 +1946,7 @@ export class SolarEngine {
 
   // easter egg: click the Sun marker — one continuous dive home through the star sea
   returnToSolarSystem() {
-    if (!this.galaxy || this.gxTrans) return;
+    if (!this.galaxy || this.gxTrans || this.gxPrep) return;
     this.galaxyObserve = false;
     this.controls.enabled = false;
     this.ensureWarpCanvas();
@@ -2236,7 +2257,7 @@ export class SolarEngine {
     const w = window.innerWidth, h = window.innerHeight;
     const v = new THREE.Vector3();
     for (const L of this.galaxyLabels) {
-      if (!this.galaxyLabelsOn || this.galaxyObserve || !this.galaxy || this.gxTrans) { L.el.style.opacity = '0'; continue; }
+      if (!this.galaxyLabelsOn || this.galaxyObserve || !this.galaxy || this.gxTrans || this.gxPrep) { L.el.style.opacity = '0'; continue; }
       L.obj.getWorldPosition(v);
       v.project(this.camera);
       if (v.z > 1 || v.z < -1) { L.el.style.opacity = '0'; continue; }

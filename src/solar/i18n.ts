@@ -177,6 +177,7 @@ export interface Strings {
     globeNoProbe: string;
     galaxyOn: string;
     galaxyOff: string;
+    galPrep: string;
     galNoExp: string;
     galNoProbe: string;
     galReturning: string;
@@ -376,6 +377,7 @@ export const STR: Record<Lang, Strings> = {
       globeNoExp: 'N-BODY EXPERIMENT RUNNING — GLOBE VIEW BLOCKED',
       globeNoProbe: 'GLOBE VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
       galaxyOn: 'GALAXY VIEW — SIM TIME FROZEN',
+      galPrep: 'PLOTTING COURSE — COMPILING STAR CHARTS…',
       galaxyOff: 'BACK TO THE SOLAR SYSTEM — TIME RESUMED',
       galNoExp: 'N-BODY EXPERIMENT BLOCKED IN GALAXY VIEW',
       galNoProbe: 'GALAXY VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
@@ -574,6 +576,7 @@ export const STR: Record<Lang, Strings> = {
       globeNoExp: 'N 体实验进行中，无法进入球体视图',
       globeNoProbe: '球体视图与探测器模式互斥',
       galaxyOn: '已进入银河视图 — 时间已冻结',
+      galPrep: '航线计算中 — 正在编译星图…',
       galaxyOff: '已返回太阳系，时间恢复流动',
       galNoExp: '银河视图中无法启动 N 体实验',
       galNoProbe: '银河视图与探测器模式互斥',
