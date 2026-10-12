@@ -2200,10 +2200,113 @@ export class SolarEngine {
       g.add(new THREE.Points(og, om));
       this.gxLayers.push({ mat: om, base: 0.55, win: [0.68, 0.84], u: null });
       const anchor = new THREE.Object3D();
-      anchor.position.set(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1] + 2.6, GALAXY_SUN_POS[2]);
+      anchor.position.set(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1] + 4.2, GALAXY_SUN_POS[2]);
       g.add(anchor);
       addLabel(anchor, 'OORT CLOUD · 0.03–1.6 LY', '奥尔特云 · 0.03–1.6 光年');
     }
+
+    // ---- companion galaxies & merger relics (方案三) -----------------------
+    // Scene scale is honest: 1 unit = 1,000 ly, so everything below sits at
+    // its TRUE galactocentric position (converted from real l/b/distance).
+    const companionCloud = (
+      count: number, center: [number, number, number], size: number, opacity: number,
+      sampler: () => [number, number, number],
+      rgb: [number, number, number], win: [number, number],
+    ) => {
+      const pos = new Float32Array(count * 3);
+      const col = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const [x, y, z] = sampler();
+        pos[i * 3] = center[0] + x; pos[i * 3 + 1] = center[1] + y; pos[i * 3 + 2] = center[2] + z;
+        const v = 0.72 + Math.random() * 0.28; // per-star brightness jitter
+        col[i * 3] = rgb[0] * v; col[i * 3 + 1] = rgb[1] * v; col[i * 3 + 2] = rgb[2] * v;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const mat = new THREE.PointsMaterial({
+        size, vertexColors: true, transparent: true, opacity: 0, depthWrite: false,
+        map: glowTex, blending: THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
+      });
+      const pts = new THREE.Points(geo, mat);
+      pts.frustumCulled = false;
+      g.add(pts);
+      this.gxLayers.push({ mat, base: opacity, win, u: null });
+      return pts;
+    };
+    const poi3 = (cx: number, cy: number, cz: number, name: string, nameCn: string, desc: string, descCn: string) => {
+      const anchor = new THREE.Object3D();
+      anchor.position.set(cx, cy, cz);
+      g.add(anchor);
+      addLabel(anchor, name, nameCn, { poi: { id: name, name, nameCn, pos: [cx, cy, cz], desc, descCn, color: 'rgba(255,220,170,1)' } });
+    };
+
+    // soft glow anchors so the clouds read from the default face-on view
+    {
+      const glowAt = (c: [number, number, number], scale: number, rgba: string) => {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glowTex, color: new THREE.Color(rgba), transparent: true, opacity: 0,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        sp.position.set(c[0], c[1], c[2]);
+        sp.scale.setScalar(scale);
+        g.add(sp);
+        this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base: 0.35, win: [0.72, 0.88], u: null });
+      };
+      glowAt([79.9, -88.0, 108.3], 14, 'rgba(255,236,190,1)');
+      glowAt([113.4, -139.2, 65.3], 11, 'rgba(255,225,180,1)');
+    }
+
+    // LMC — irregular dwarf: a bright central BAR + loose clumpy disk.
+    // (it has no spiral arms — that shape difference IS the astronomy)
+    companionCloud(2000, [79.9, -88.0, 108.3], 1.25, 0.85, () => {
+      if (Math.random() < 0.55) {
+        // the LMC bar, tilted ~20° off the galactic plane
+        const t = this.gauss() * 5.5;
+        const tilt = 0.35;
+        return [t, this.gauss() * 1.1 + t * Math.sin(tilt) * 0.35, this.gauss() * 1.4];
+      }
+      // clumpy disk: several offset knots (giant HII regions like 30 Dor)
+      const knots = [[3.5, 1.5, 0], [-3, -1, 1.5], [0.5, -2.5, -1], [-1.5, 2, -1.2]];
+      const k = knots[Math.floor(Math.random() * knots.length)];
+      return [k[0] + this.gauss() * 2.6, k[1] + this.gauss() * 1.8, k[2] + this.gauss() * 2.6];
+    }, [1.0, 0.9, 0.72], [0.72, 0.88]);
+    poi3(79.9, -88.0 + 9, 108.3, 'LMC · 163,000 LY', '大麦哲伦云 · 16.3 万光年',
+      'The Milky Way\'s largest satellite galaxy. Supernova 1987A — the nearest in the telescopic era — exploded here. It will merge with us in ~2.4 billion years. Southern-hemisphere skies only.',
+      '银河最大的伴星系。望远镜时代最近的超新星 1987A 就爆发在这里。约 24 亿年后将被银河并合。仅南半球天空可见。');
+
+    // SMC — smaller, dimmer, visibly STRETCHED: the Milky Way and the LMC
+    // are pulling it apart right now
+    companionCloud(1200, [113.4, -139.2, 65.3], 1.1, 0.75, () => {
+      const t = this.gauss() * 6.5;
+      const tail = Math.random() < 0.12 ? Math.random() * 9 : 0; // tidal tail toward LMC
+      return [t - tail * 0.6, this.gauss() * 2.0 - tail * 0.5, this.gauss() * 2.4 + tail * 0.4];
+    }, [1.0, 0.86, 0.66], [0.72, 0.88]);
+    poi3(113.4, -139.2 + 8, 65.3, 'SMC · 200,000 LY', '小麦哲伦云 · 20 万光年',
+      'Visible to southern naked eyes, unknown to Europe before Magellan\'s circumnavigation. Its stars are being stretched between the Milky Way and the LMC.',
+      '南半球肉眼可见，麦哲伦环球航行前欧洲一无所知。它的恒星正被银河与大麦哲伦云双向拉扯变形。');
+
+    // Sagittarius Stream — a dwarf galaxy being shredded in real time.
+    // Core remnant + a near-polar great-circle star stream (~76° to the disk).
+    companionCloud(600, [29.3, -16.4, -30.3], 0.95, 0.8, () =>
+      [this.gauss() * 2.4, this.gauss() * 2.4, this.gauss() * 2.4], [1.0, 0.72, 0.5], [0.74, 0.90]);
+    {
+      // stream ring: orbit plane contains the core direction, steep to the disk
+      const e1 = new THREE.Vector3(29.3, -16.4, -30.3).normalize();
+      const e2 = new THREE.Vector3(0, 1, 0).addScaledVector(e1, -e1.y).normalize();
+      companionCloud(2500, [0, 0, 0], 0.85, 0.55, () => {
+        // density peaks at the core (θ=0) and the opposite wrap (θ=π)
+        const pick = Math.random();
+        const th = pick < 0.4 ? this.gauss() * 0.5 : pick < 0.7 ? Math.PI + this.gauss() * 0.7 : Math.random() * Math.PI * 2;
+        const r = 45 + this.gauss() * 3.2;
+        const p = e1.clone().multiplyScalar(Math.cos(th) * r).addScaledVector(e2, Math.sin(th) * r);
+        p.x += this.gauss() * 1.1; p.y += this.gauss() * 1.1; p.z += this.gauss() * 1.1;
+        return [p.x, p.y, p.z];
+      }, [1.0, 0.68, 0.45], [0.74, 0.90]);
+    }
+    poi3(29.3, -16.4 - 7, -30.3, 'SAGITTARIUS STREAM', '人马座星流',
+      'A dwarf galaxy being torn apart by the Milky Way\'s tides right now — stretched into a star stream wrapping nearly the whole galaxy. The halo was built from meals like this. Found only in 1994.',
+      '一个正在被银河潮汐力当场撕碎的矮星系——被拉成环绕银河近一圈的恒星流。银晕就是这样一口一口吃出来的。1994 年才被发现。');
 
     // points of interest
     for (const poi of GALAXY_POIS) {
