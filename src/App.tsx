@@ -372,11 +372,15 @@ export default function App() {
           <button id="deck-handle" className="ctl" title={t.deckShow} onClick={toggleDeck}>❮</button>
         )}
         {(() => {
-          const sysHost = (focusId === 'jupiter' || focusId === 'saturn' || focusId === 'earth') ? focusId
+          const sysHost = (focusId === 'earth' || focusId in MOON_SYS) ? focusId
             : (focusId === 'moon' ? 'earth' : MOON_HOST[focusId]);
           if (!sysHost) return null;
-          const moons = sysHost === 'earth' ? [MOON_SPEC] : MOON_SYS[sysHost];
-          const title = sysHost === 'jupiter' ? t.moonSysJupiter : sysHost === 'saturn' ? t.moonSysSaturn : t.moonSysEarth;
+          const moons = sysHost === 'earth' ? [MOON_SPEC] : MOON_SYS[sysHost as keyof typeof MOON_SYS];
+          const titles: Record<string, string> = {
+            jupiter: t.moonSysJupiter, saturn: t.moonSysSaturn, earth: t.moonSysEarth,
+            mars: t.moonSysMars, uranus: t.moonSysUranus, neptune: t.moonSysNeptune, pluto: t.moonSysPluto,
+          };
+          const title = titles[sysHost] ?? sysHost.toUpperCase();
           return (
             <div id="moon-chips" className="ctl">
               <span className="mc-title">{title}</span>

@@ -409,6 +409,110 @@ function paintEnceladus(): HTMLCanvasElement {
   return c;
 }
 
+// Phobos — dark rubble pile with the giant Stickney crater dominating one face
+function paintPhobos(): HTMLCanvasElement {
+  const c = paintRocky([[104, 92, 82], [74, 64, 58], [128, 116, 104]], 61.3, 55);
+  const ctx = c.getContext('2d')!;
+  const W = c.width, H = c.height;
+  // Stickney: one huge basin (~9 km on a 22 km body) with a bright rim
+  const cx = W * 0.30, cy = H * 0.42, r = H * 0.30;
+  for (const ox of [-W, 0, W]) {
+    const g = ctx.createRadialGradient(cx + ox, cy, r * 0.15, cx + ox, cy, r);
+    g.addColorStop(0, 'rgba(8,6,5,0.55)');
+    g.addColorStop(0.8, 'rgba(20,16,12,0.30)');
+    g.addColorStop(0.95, 'rgba(210,196,178,0.28)'); // raised bright rim
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx + ox, cy, r, 0, Math.PI * 2); ctx.fill();
+  }
+  // groove chains radiating from Stickney (tidal-fracture stripes)
+  ctx.strokeStyle = 'rgba(30,25,20,0.35)'; ctx.lineWidth = 1.4;
+  for (let k = 0; k < 9; k++) {
+    const a = -0.9 + k * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r * 0.9, cy + Math.sin(a) * r * 0.9);
+    ctx.lineTo(cx + Math.cos(a) * r * 2.6, cy + Math.sin(a) * r * 2.2);
+    ctx.stroke();
+  }
+  return c;
+}
+
+// Deimos — smoother: thick dust blanket softens everything
+function paintDeimos(): HTMLCanvasElement {
+  const c = paintRocky([[128, 116, 102], [102, 92, 82], [146, 134, 118]], 67.9, 18);
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 0, c.height);
+  g.addColorStop(0, 'rgba(190,178,160,0.10)');
+  g.addColorStop(1, 'rgba(80,70,60,0.12)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+// icy body + canyon grabens (Ariel/Titania style)
+function paintIcyCanyons(palette: RGB[], seed: number, craters: number, canyon: string): HTMLCanvasElement {
+  const c = paintRocky(palette, seed, craters);
+  const ctx = c.getContext('2d')!;
+  const W = c.width, H = c.height;
+  // long branching canyon systems — dark floors with bright walls
+  for (let k = 0; k < 6; k++) {
+    const y0 = H * (0.25 + hash2(k, 5, seed) * 0.5);
+    const amp = 6 + hash2(k, 9, seed) * 10;
+    ctx.strokeStyle = canyon; ctx.lineWidth = 2.2 + hash2(k, 13, seed) * 2.0;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 10) {
+      const y = y0 + Math.sin((x / W) * Math.PI * (2 + k % 3) + k * 2.1) * amp;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  return c;
+}
+
+// Triton — pink nitrogen-ice cantaloupe terrain + dark geyser fan streaks
+function paintTriton(): HTMLCanvasElement {
+  const W = 512, H = 256;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const nx = x / W * 6, ny = y / H * 3;
+      // cantaloupe: high-frequency dimples over a pink base
+      const dimp = Math.abs(fbm(nx * 4, ny * 4, 71.4, 4, 24) - 0.5) * 2;
+      const base = mix([232, 205, 198], [206, 172, 166], dimp);
+      const n = fbm(nx, ny, 73.1, 5, 6);
+      let col = mix(base, [244, 232, 226], Math.min(1, Math.max(0, n * 1.5 - 0.25)));
+      // pale southern cap
+      col = mix(col, [248, 244, 240], Math.min(1, Math.max(0, (y / H - 0.72) * 2.2)));
+      const i = (y * W + x) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // dark nitrogen-geyser fan streaks across the southern cap
+  ctx.strokeStyle = 'rgba(46,36,34,0.5)'; ctx.lineWidth = 1.6;
+  for (let k = 0; k < 26; k++) {
+    const x0 = hash2(k, 3, 71.4) * W, y0 = H * (0.70 + hash2(k, 7, 71.4) * 0.26);
+    const a = 4.2 + hash2(k, 11, 71.4) * 1.2; // winds blow them all one way
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + Math.cos(a) * 14, y0 + Math.sin(a) * 8);
+    ctx.stroke();
+  }
+  return c;
+}
+
+// Charon — neutral gray-brown with the famous reddish north-polar cap (Mordor)
+function paintCharon(): HTMLCanvasElement {
+  const c = paintRocky([[146, 140, 132], [112, 106, 100], [168, 162, 154]], 83.7, 40);
+  const ctx = c.getContext('2d')!;
+  const W = c.width;
+  const g = ctx.createRadialGradient(W * 0.5, 0, 4, W * 0.5, 0, c.height * 0.34);
+  g.addColorStop(0, 'rgba(150,74,52,0.55)');   // Mordor Macula — tholin red
+  g.addColorStop(0.7, 'rgba(140,80,60,0.25)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, c.height * 0.5);
+  return c;
+}
+
 export function planetTexture(kind: TexKind): THREE.CanvasTexture {
   let c: HTMLCanvasElement;
   switch (kind) {
@@ -429,6 +533,14 @@ export function planetTexture(kind: TexKind): THREE.CanvasTexture {
     case 'callisto':  c = paintCallisto(); break;
     case 'titan':     c = paintTitan(); break;
     case 'enceladus': c = paintEnceladus(); break;
+    case 'phobos':    c = paintPhobos(); break;
+    case 'deimos':    c = paintDeimos(); break;
+    case 'ariel':     c = paintIcyCanyons([[178, 190, 198], [140, 152, 162], [206, 216, 222]], 87.3, 30, 'rgba(60,70,80,0.45)'); break;
+    case 'titania':   c = paintIcyCanyons([[172, 164, 154], [132, 124, 116], [198, 190, 180]], 91.7, 45, 'rgba(58,52,46,0.5)'); break;
+    case 'oberon':    c = paintIcyCanyons([[138, 124, 112], [100, 88, 80], [162, 148, 134]], 97.1, 70, 'rgba(70,52,40,0.4)'); break;
+    case 'triton':    c = paintTriton(); break;
+    case 'charon':    c = paintCharon(); break;
+    case 'apophis':   c = paintRocky([[96, 88, 80], [66, 60, 55], [120, 110, 100]], 103.3, 35); break;
     case 'eris':      c = paintEris(); break;
     case 'haumea':    c = paintHaumea(); break;
     case 'makemake':  c = paintMakemake(); break;

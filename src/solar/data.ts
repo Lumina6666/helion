@@ -23,7 +23,9 @@ export type TexKind =
   | 'jupiter' | 'saturn' | 'uranus' | 'neptune' | 'pluto'
   | 'ceres' | 'vesta'
   | 'io' | 'europa' | 'ganymede' | 'callisto' | 'titan' | 'enceladus'
-  | 'eris' | 'haumea' | 'makemake';
+  | 'eris' | 'haumea' | 'makemake'
+  | 'phobos' | 'deimos' | 'ariel' | 'titania' | 'oberon' | 'triton' | 'charon'
+  | 'apophis';
 
 export const SUN_RADIUS = 5;
 export const AU_UNITS = 24;          // units per AU
@@ -198,6 +200,15 @@ export const ASTEROID_SPECS: PlanetSpec[] = [
     fact: '2.36 AU · BRIGHTEST ASTEROID · VISIBLE TO NAKED EYE',
     factCn: '2.36 AU · 最亮的小行星 · 肉眼可见',
   },
+  {
+    // Real JPL #218 elements in ephem.ts — with ephemeris on, Apophis meets
+    // Earth right on 2029-04-13. Display radius is the compressed 0.922 AU ring.
+    id: 'apophis', name: 'APOPHIS', cn: '阿波菲斯',
+    radius: 0.05, distance: 23, inclination: 0, tiltDeg: 0, spin: 3.0,
+    tex: 'apophis', color: '#a89684',
+    fact: '370 M · ATEN ASTEROID · SKIMS EARTH 2029-04-13 — CLOSER THAN GEO SATELLITES',
+    factCn: '370 米 · 阿登型小行星 · 2029-04-13 飞掠地球——比同步卫星还近',
+  },
 ];
 
 // ------------------------------------------------------------ outer dwarfs
@@ -339,13 +350,14 @@ export const NEW_MOON_JD = 2440587.5 + Date.UTC(2026, 6, 14, 17, 44) / 86400000;
 // sqrt-compressed around the host (real ratio in host radii kept in comments).
 // Positions run on a real-time showcase clock (same precedent as the ISS),
 // proportional to the true period ratios — so sim time-warp never blurs them.
+export type MoonHost = 'jupiter' | 'saturn' | 'mars' | 'uranus' | 'neptune' | 'pluto';
 export interface MoonSysSpec extends PlanetSpec {
-  host: 'jupiter' | 'saturn';
-  showSecs: number;   // seconds per revolution on the showcase clock
+  host: MoonHost;
+  showSecs: number;   // seconds per revolution on the showcase clock (negative = retrograde)
   phase: number;      // initial orbital phase (radians)
 }
 
-export const MOON_SYS: Record<'jupiter' | 'saturn', MoonSysSpec[]> = {
+export const MOON_SYS: Record<MoonHost, MoonSysSpec[]> = {
   jupiter: [
     {
       id: 'io', name: 'IO', cn: '木卫一', host: 'jupiter',
@@ -392,11 +404,76 @@ export const MOON_SYS: Record<'jupiter' | 'saturn', MoonSysSpec[]> = {
       factCn: '冰羽喷泉 · 南极虎纹 · 哺育 E 环',
     },
   ],
+  // Same compression convention: display distance = sqrt(real host-radii ratio) × k
+  // (mars k≈2.2, uranus/neptune/pluto k≈2.6); showSecs = real period days × 5.65,
+  // negative = retrograde; radii are true size ratios ×2 gain, floor ~0.07 —
+  // except Charon, shown at its honest 0.51× Pluto ratio (the binary-world point).
+  mars: [
+    {
+      id: 'phobos', name: 'PHOBOS', cn: '火卫一', host: 'mars',
+      radius: 0.055, distance: 3.65 /* 2.76 Rm */, inclination: 1.1, tiltDeg: 0, spin: 0,
+      tex: 'phobos', color: '#8a7a6a', showSecs: 1.8, phase: 0.7,
+      fact: 'OUTRACES MARS’S SPIN · RISES IN THE WEST · DOOMED TO BECOME A RING',
+      factCn: '比火星自转还快 · 西升东落 · 终将碎成火星环',
+    },
+    {
+      id: 'deimos', name: 'DEIMOS', cn: '火卫二', host: 'mars',
+      radius: 0.05, distance: 5.8 /* 6.9 Rm */, inclination: 1.8, tiltDeg: 0, spin: 0,
+      tex: 'deimos', color: '#9a8d7c', showSecs: 7.1, phase: 2.9,
+      fact: 'TINY & DUSTY · 30-HOUR LAP · LOOKS LIKE A STAR FROM MARS',
+      factCn: '微小而多尘 · 30 小时一圈 · 从火星表面看像一颗亮星',
+    },
+  ],
+  uranus: [
+    {
+      id: 'ariel', name: 'ARIEL', cn: '天卫一', host: 'uranus',
+      radius: 0.10, distance: 7.1 /* 7.5 Ru */, inclination: 0.3, tiltDeg: 0, spin: 0,
+      tex: 'ariel', color: '#bcc8cf', showSecs: 14, phase: 1.2,
+      fact: 'BRIGHTEST URANIAN MOON · CANYON-CROSSED ICE PLAINS',
+      factCn: '天王星最亮的卫星 · 峡谷纵横的冰原',
+    },
+    {
+      id: 'titania', name: 'TITANIA', cn: '天卫三', host: 'uranus',
+      radius: 0.13, distance: 10.8 /* 17.1 Ru */, inclination: 0.2, tiltDeg: 0, spin: 0,
+      tex: 'titania', color: '#b8b2a8', showSecs: 49, phase: 3.8,
+      fact: 'LARGEST URANIAN MOON · THE WHOLE SYSTEM RIDES SIDEWAYS (98° TILT)',
+      factCn: '天王星最大的卫星 · 整个系统随天王星 98° 倾角侧躺公转',
+    },
+    {
+      id: 'oberon', name: 'OBERON', cn: '天卫四', host: 'uranus',
+      radius: 0.13, distance: 12.5 /* 22.9 Ru */, inclination: 0.2, tiltDeg: 0, spin: 0,
+      tex: 'oberon', color: '#a89a8e', showSecs: 76, phase: 5.5,
+      fact: 'OUTERMOST BIG MOON · ANCIENT RED-DUSTED CRATER FIELD',
+      factCn: '最外侧的大卫星 · 古老的红化陨击荒原',
+    },
+  ],
+  neptune: [
+    {
+      id: 'triton', name: 'TRITON', cn: '海卫一', host: 'neptune',
+      radius: 0.20, distance: 9.9 /* 14.4 Rn */, inclination: 23, tiltDeg: 0, spin: 0,
+      tex: 'triton', color: '#e8c9c4', showSecs: -33 /* RETROGRADE −5.877 d */, phase: 2.2,
+      fact: 'ORBITS BACKWARD — A CAPTURED KUIPER-BELT WORLD · NITROGEN GEYSERS',
+      factCn: '逆行公转——被俘获的柯伊伯带天体 · 表面有氮喷泉',
+    },
+  ],
+  pluto: [
+    {
+      id: 'charon', name: 'CHARON', cn: '冥卫一', host: 'pluto',
+      radius: 0.19 /* honest 0.51× Pluto — no gain */, distance: 10.6 /* 16.5 Rp */,
+      inclination: 0.4, tiltDeg: 0, spin: 0,
+      tex: 'charon', color: '#9a938c', showSecs: 36, phase: 4.4,
+      fact: 'HALF OF PLUTO’S SIZE · THE BARYCENTER FLOATS IN EMPTY SPACE — A BINARY WORLD',
+      factCn: '有冥王星一半大 · 质心悬在两星之间的虚空里——一对双行星',
+    },
+  ],
 };
 
-export const MOON_HOST: Record<string, 'jupiter' | 'saturn'> = {
+export const MOON_HOST: Record<string, MoonHost> = {
   io: 'jupiter', europa: 'jupiter', ganymede: 'jupiter', callisto: 'jupiter',
   titan: 'saturn', enceladus: 'saturn',
+  phobos: 'mars', deimos: 'mars',
+  ariel: 'uranus', titania: 'uranus', oberon: 'uranus',
+  triton: 'neptune', charon: 'pluto',
 };
 
 // heliocentric distances (AU) for the true-scale HUD readout
@@ -406,7 +483,10 @@ export const DIST_AU: Record<string, number> = {
   pluto: 39.48, moon: 1.0, halley: 17.8, ceres: 2.767, vesta: 2.362,
   io: 5.203, europa: 5.203, ganymede: 5.203, callisto: 5.203,
   titan: 9.583, enceladus: 9.583,
+  phobos: 1.524, deimos: 1.524, ariel: 19.19, titania: 19.19, oberon: 19.19,
+  triton: 30.07, charon: 39.48,
   eris: 67.7, haumea: 43.0, makemake: 45.6,
+  apophis: 0.922,
 };
 
 // ------------------------------------------------------------ mission replay
@@ -457,6 +537,7 @@ export const MINI_GROUPS: MiniGroup[] = [
   ] },
   { cat: 'ASTEROIDS', catCn: '小行星', items: [
     { id: 'vesta', name: 'VESTA', cn: '灶神星' },
+    { id: 'apophis', name: 'APOPHIS', cn: '阿波菲斯' },
   ] },
   { cat: 'COMETS', catCn: '彗星', items: [
     { id: 'halley', name: 'HALLEY', cn: '哈雷彗星' },
@@ -787,6 +868,90 @@ export const DOSSIER: Record<string, Dossier> = {
       { k: 'SPEED', kCn: '速度', v: '15.4 KM/S', vCn: '15.4 千米/秒' },
       { k: 'STATUS', kCn: '状态', v: 'INTERSTELLAR', vCn: '星际空间' },
       { k: 'GRAND TOUR', kCn: '造访行星', v: '4 GIANTS', vCn: '4 颗巨行星' },
+    ],
+  },
+  phobos: {
+    type: 'MARTIAN MOON', typeCn: '火星卫星', diameterKm: 22.5,
+    blurb: 'A rubble-pile potato orbiting faster than Mars spins — from the surface it rises in the WEST. Tides are pulling it down: within ~50 million years it will shred into a ring. Stickney crater nearly shattered it.',
+    blurbCn: '一颗碎石堆“土豆”，公转比火星自转还快——在火星表面看它从西边升起。潮汐正把它往下拽：约 5000 万年内会碎成一圈火星环。斯蒂克尼陨石坑几乎把它撞碎。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '9,376 KM', vCn: '9,376 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '7H 39M', vCn: '7 小时 39 分' },
+      { k: 'RISES', kCn: '升起方向', v: 'WEST (FAST ORBIT)', vCn: '西边（轨道快过自转）' },
+      { k: 'FATE', kCn: '归宿', v: 'RING IN ~50 MYR', vCn: '约 5000 万年后成环' },
+    ],
+  },
+  deimos: {
+    type: 'MARTIAN MOON', typeCn: '火星卫星', diameterKm: 12.4,
+    blurb: 'The outer and smaller Martian moon — a dusty, smoothed-over rock taking 30 hours per lap. From Mars it looks like a bright slow-moving star.',
+    blurbCn: '火星外侧较小的卫星——一颗被尘土抹平的小岩块，30 小时绕一圈。从火星上看，它像一颗缓慢移动的亮星。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '23,460 KM', vCn: '23,460 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '30.3 H', vCn: '30.3 小时' },
+      { k: 'SURFACE', kCn: '表面', v: 'DUST-BLANKETED', vCn: '厚尘覆盖' },
+    ],
+  },
+  ariel: {
+    type: 'URANIAN MOON', typeCn: '天王星卫星', diameterKm: 1158,
+    blurb: 'The brightest Uranian moon — young icy plains cut by canyon grabens, signs the interior once flexed and thawed.',
+    blurbCn: '天王星最亮的卫星——年轻的冰原上切出一道道地堑峡谷，说明它的内部曾经受热变形。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '190,900 KM', vCn: '190,900 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '2.52 DAYS', vCn: '2.52 天' },
+      { k: 'SURFACE', kCn: '表面', v: 'YOUNGEST OF URANIAN MOONS', vCn: '天王星卫星中最年轻' },
+    ],
+  },
+  titania: {
+    type: 'URANIAN MOON', typeCn: '天王星卫星', diameterKm: 1578,
+    blurb: 'The largest moon of Uranus, scarred by titanic canyons. The whole system rides sideways: Uranus is tipped 98°, so the moons orbit like a vertical Ferris wheel.',
+    blurbCn: '天王星最大的卫星，遍布巨大峡谷。整个系统是侧躺的：天王星倾角 98°，卫星们像竖直的摩天轮一样公转。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '435,900 KM', vCn: '435,900 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '8.71 DAYS', vCn: '8.71 天' },
+      { k: 'SYSTEM TILT', kCn: '系统倾角', v: '98° (SIDEWAYS)', vCn: '98°（侧躺）' },
+    ],
+  },
+  oberon: {
+    type: 'URANIAN MOON', typeCn: '天王星卫星', diameterKm: 1523,
+    blurb: 'The outermost big Uranian moon — an ancient, heavily cratered ice world, reddened by billions of years of space weathering.',
+    blurbCn: '最外侧的天王星大卫星——古老而陨击密集的冰世界，数十亿年的空间风化让它微微泛红。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '583,500 KM', vCn: '583,500 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '13.46 DAYS', vCn: '13.46 天' },
+      { k: 'AGE', kCn: '表面年龄', v: '~4 BILLION YEARS', vCn: '约 40 亿年' },
+    ],
+  },
+  triton: {
+    type: 'NEPTUNIAN MOON', typeCn: '海王星卫星', diameterKm: 2707,
+    blurb: 'A captured Kuiper-belt dwarf planet orbiting BACKWARD (retrograde) — impossible to form in place. Nitrogen geysers streak its pink cantaloupe skin, and in 3.6 billion years it will fall and become a ring. Display orbit is retrograde for real (negative showcase period).',
+    blurbCn: '一颗被俘获的柯伊伯带矮行星，逆向公转——不可能原地形成。粉色哈密瓜纹表面上氮喷泉留下黑条纹，36 亿年后将坠落碎成海王星环。展示轨道按真实方向逆行（公转周期为负值）。',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '354,800 KM', vCn: '354,800 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '−5.88 DAYS (RETROGRADE)', vCn: '−5.88 天（逆行）' },
+      { k: 'SURFACE TEMP', kCn: '表面温度', v: '−235 °C', vCn: '−235 °C' },
+      { k: 'ORIGIN', kCn: '来源', v: 'CAPTURED KUIPER-BELT WORLD', vCn: '被俘获的柯伊伯带天体' },
+    ],
+  },
+  charon: {
+    type: 'PLUTONIAN MOON', typeCn: '冥王星卫星', diameterKm: 1212,
+    blurb: 'Half the size of Pluto — so massive the pair orbit a point in empty space BETWEEN them. A true binary world, locked face-to-face forever. (Shown at honest size ratio.)',
+    blurbCn: '有冥王星的一半大——重到两者绕着悬空于它们之间的质心旋转。一对真正的双行星，永远面对面锁定。（按真实大小比例展示。）',
+    rows: [
+      { k: 'ORBIT', kCn: '轨道半径', v: '19,640 KM', vCn: '19,640 千米' },
+      { k: 'PERIOD', kCn: '公转周期', v: '6.39 DAYS', vCn: '6.39 天' },
+      { k: 'BARYCENTER', kCn: '质心', v: 'ABOVE PLUTO’S SURFACE', vCn: '位于冥王星表面之外' },
+    ],
+  },
+  apophis: {
+    type: 'NEAR-EARTH ASTEROID', typeCn: '近地小行星', diameterKm: 0.37,
+    blurb: 'On 13 April 2029 Apophis skims just 31,600 km above Earth — closer than geostationary satellites, bright enough (+3.1 mag) for two billion people to watch it crawl across the evening sky with the naked eye. Earth’s tide will stretch it and flip it from an Aten-class to an Apollo-class orbit. Scene orbit uses JPL solution #218; two-body display only, so the 2029 encounter geometry is approximate.',
+    blurbCn: '2029 年 4 月 13 日，阿波菲斯将以仅 31,600 千米的高度掠过地球——比地球同步卫星还近，最亮 +3.1 等，约二十亿人能用肉眼看着它爬过夜空。地球潮汐会拉扯它，把它从阿登型轨道甩成阿波罗型。场景轨道采用 JPL #218 根数；纯二体展示，2029 相遇几何为近似。',
+    rows: [
+      { k: 'CLASS', kCn: '分类', v: 'ATEN → APOLLO (2029)', vCn: '阿登型 → 阿波罗型（2029）' },
+      { k: 'SEMI-MAJOR AXIS', kCn: '半长轴', v: '0.922 AU', vCn: '0.922 AU' },
+      { k: 'YEAR', kCn: '公转周期', v: '323.6 DAYS', vCn: '323.6 天' },
+      { k: 'CLOSEST APPROACH', kCn: '最近飞掠', v: '2029-04-13 · 31,600 KM', vCn: '2029-04-13 · 31,600 千米' },
+      { k: 'IMPACT RISK', kCn: '撞击风险', v: 'RULED OUT FOR 100+ YEARS', vCn: '百年内已排除' },
     ],
   },
 };

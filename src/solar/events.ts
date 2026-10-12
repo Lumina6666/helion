@@ -2,7 +2,7 @@
 // passages directly from the ephemeris, independent of the running simulation.
 import { ELEMENTS, helioLonLat, HALLEY, BASE_JD } from './ephem';
 
-export type EventType = 'opposition' | 'conjunction' | 'perihelion' | 'solarEclipse' | 'lunarEclipse' | 'transit';
+export type EventType = 'opposition' | 'conjunction' | 'perihelion' | 'solarEclipse' | 'lunarEclipse' | 'transit' | 'flyby';
 
 export interface AstroEvent {
   jd: number;
@@ -66,6 +66,17 @@ export const ECLIPSES: EclipseEvent[] = [
   { jd: JD_OF(2117, 12, 11), kind: 'transit', subtype: 'VENUS', subtypeCn: '金星凌日',
     region: 'Worldwide (telescope)', regionCn: '全球（需望远镜）',
     note: 'Next century — mark your calendar', noteCn: '下个世纪见 — 先记在日历上' },
+];
+
+// ------------------------------------------------------------ flybys
+// Exact-date close approaches — like the eclipse canon, these are ephemeris
+// facts (JPL), not things the toy clock can derive. Date is the noon anchor;
+// the caption carries the precise moment.
+export interface FlybyEvent { jd: number; a: string; b: string; info: string; infoCn: string }
+export const FLYBYS: FlybyEvent[] = [
+  { jd: JD_OF(2029, 4, 13), a: 'apophis', b: 'earth',
+    info: 'APOPHIS CLOSE APPROACH · 31,600 KM AT 21:46 UTC — INSIDE THE GEO RING, NAKED-EYE (+3.1 MAG) OVER EUROPE/AFRICA/W. ASIA',
+    infoCn: '阿波菲斯飞掠地球 · 21:46 UTC 最近 31,600 千米——钻进同步卫星环内侧，欧洲/非洲/西亚肉眼可见（+3.1 等）' },
 ];
 
 // eclipse live within ±0.75 d of sim date (transits excluded from the demo rig)
@@ -144,6 +155,10 @@ export const OPP_PLANETS = ['mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 // The next occurrence of a user-chosen event (for the prediction game).
 export function solveEvent(type: EventType, a: string, b: string, afterJd: number): number | null {
   if (type === 'perihelion') return nextHalleyPerihelion(afterJd);
+  if (type === 'flyby') {
+    const hit = FLYBYS.find(f => f.jd > afterJd);
+    return hit ? hit.jd : null;
+  }
   if (type === 'solarEclipse' || type === 'lunarEclipse' || type === 'transit') {
     const hit = ECLIPSES.find(e => e.jd > afterJd &&
       (type === 'transit' ? e.kind === 'transit' : e.kind === (type === 'solarEclipse' ? 'solar' : 'lunar')));
@@ -167,6 +182,11 @@ export function listUpcoming(afterJd: number, count = 8): AstroEvent[] {
     if (jd) out.push({ jd, type: 'opposition', a: 'earth', b: p });
   }
   out.push({ jd: nextHalleyPerihelion(afterJd), type: 'perihelion', a: 'sun', b: 'halley' });
+  // exact-date flyby canon (Apophis 2029)
+  for (const f of FLYBYS) {
+    if (f.jd <= afterJd) continue;
+    out.push({ jd: f.jd, type: 'flyby', a: f.a, b: f.b, info: f.info, infoCn: f.infoCn });
+  }
   // merge the exact-date eclipse & transit canon
   for (const e of ECLIPSES) {
     if (e.jd <= afterJd) continue;

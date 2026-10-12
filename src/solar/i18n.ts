@@ -24,6 +24,10 @@ export interface Strings {
   moonSysJupiter: string;
   moonSysSaturn: string;
   moonSysEarth: string;
+  moonSysMars: string;
+  moonSysUranus: string;
+  moonSysNeptune: string;
+  moonSysPluto: string;
   deckShow: string;
   soundOn: string;
   soundOff: string;
@@ -249,6 +253,10 @@ export const STR: Record<Lang, Strings> = {
     moonSysJupiter: 'JOVIAN SYSTEM',
     moonSysSaturn: 'SATURNIAN SYSTEM',
     moonSysEarth: 'EARTH SYSTEM',
+    moonSysMars: 'MARTIAN SYSTEM',
+    moonSysUranus: 'URANIAN SYSTEM · SIDEWAYS',
+    moonSysNeptune: 'NEPTUNIAN SYSTEM',
+    moonSysPluto: 'PLUTO–CHARON BINARY',
     deckShow: 'SHOW PANEL · X',
     soundOn: '🔊 SOUND: ON',
     soundOff: '🔇 SOUND: OFF',
@@ -472,6 +480,10 @@ export const STR: Record<Lang, Strings> = {
     moonSysJupiter: '木星系统',
     moonSysSaturn: '土星系统',
     moonSysEarth: '地月系统',
+    moonSysMars: '火星系统',
+    moonSysUranus: '天王星系统 · 侧躺',
+    moonSysNeptune: '海王星系统',
+    moonSysPluto: '冥王星–冥卫一双星',
     deckShow: '展开面板 · X',
     soundOn: '🔊 音效: 开',
     soundOff: '🔇 音效: 关',

@@ -11,7 +11,7 @@ import {
   MOON_SPEC, MOON_PERIOD_DAYS, MOON_SCENE_R, NEW_MOON_JD, DIST_AU,
   ASTEROID_SPECS, DWARF_SPECS, ISS_SPEC, ISS_SCENE_R, ORBITER_SPEC, LANDMARKS, GALAXY_POIS, GALAXY_SUN_POS, GALAXY_SUN_LABEL, GALAXY_ARMS,
   MOON_SYS, MOON_HOST, MISSIONS } from './data';
-import type { MoonSysSpec, MissionKey } from './data';
+import type { MoonSysSpec, MissionKey, MoonHost } from './data';
 import type { Landmark, GalaxyPoi } from './data';
 import type { PlanetSpec } from './data';
 import { planetTexture, sunTexture, ringTexture, glowSprite, loadRealTextures } from './textures';
@@ -272,7 +272,8 @@ export class SolarEngine {
   private well: THREE.Mesh | null = null;
   private lagrangeGroup: THREE.Group | null = null;
   private lagLabels: HTMLElement[] = [];
-  private trojans: THREE.Points[] = [];
+  private trojanGroup: THREE.Group | null = null;   // permanent L4/L5 camps, tracks Jupiter live
+  private trojanLabels: Array<{ el: HTMLElement; anchor: THREE.Object3D }> = [];
   private experiment: {
     bodies: Array<{
       id: string; mu: number;
@@ -460,6 +461,9 @@ export class SolarEngine {
     this.kuiper = this.makeBelt(1800, 80, 105, { yHalf: 4.2, icy: true });
     this.scene.add(this.kuiper);
 
+    // Jupiter's Trojan camps — permanent citizens like the belt
+    this.buildTrojans();
+
     // heliopause — the bubble the Voyagers punched through (~121 AU real)
     {
       const mat = new THREE.MeshBasicMaterial({
@@ -599,11 +603,16 @@ export class SolarEngine {
 
   // moon systems deploy lazily — built the first time the host is focused or
   // globe-viewed, then they live in this.planets like every other body
-  private ensureMoonSystem(hostId: 'jupiter' | 'saturn') {
+  private ensureMoonSystem(hostId: MoonHost) {
     if (this.moonSysBuilt.has(hostId)) return;
     this.moonSysBuilt.add(hostId);
+    // moons orbit in the host's equatorial plane — tilt every pivot by the
+    // host's axial tilt so Uranus's system really stands on its side (97.8°)
+    // and Saturn's moons lie in the ring plane
+    const hostTilt = PLANETS.find(pl => pl.id === hostId)?.tiltDeg ?? 0;
     for (const spec of MOON_SYS[hostId]) {
       const pivot = new THREE.Group();
+      pivot.rotation.z = hostTilt * DEG;
       this.scene.add(pivot);
       const body = new THREE.Group();
       body.scale.setScalar(this.params.planetScale);
@@ -662,7 +671,7 @@ export class SolarEngine {
   focusBodyById(id: string) {
     const host = MOON_HOST[id];
     if (host) this.ensureMoonSystem(host);
-    if (id === 'jupiter' || id === 'saturn') this.ensureMoonSystem(id);
+    if (id in MOON_SYS) this.ensureMoonSystem(id as MoonHost);
     const node = this.planets.find(p => p.spec.id === id);
     if (node) this.focusPlanet(node);
   }
@@ -1377,6 +1386,56 @@ export class SolarEngine {
 
   // asteroid belt: real 3D rocks (instanced, noise-deformed icosahedra)
   // plus a faint dust layer of soft round sprites.
+  // Jupiter's Trojan swarms: the Greek camp leads at L4 (+60°), the Trojan
+  // camp trails at L5 (−60°). The whole group counter-rotates to Jupiter's
+  // live longitude every frame (see the main loop), so the 60° geometry stays
+  // honest in both clock modes. ±20° elongation matches the real libration
+  // spread of the swarm; ±5% radial scatter; label anchors ride the group.
+  private buildTrojans() {
+    const jupSpec = PLANETS.find(pl => pl.id === 'jupiter')!;
+    const R = jupSpec.distance; // 43 — Jupiter's exact display radius
+    const g = new THREE.Group();
+    this.scene.add(g);
+    this.trojanGroup = g;
+    const camps = [
+      { deg: 60, en: 'GREEK CAMP · L4', cn: '希腊营 · L4', tint: 'rgba(228,202,152,0.9)' },
+      { deg: -60, en: 'TROJAN CAMP · L5', cn: '特洛伊营 · L5', tint: 'rgba(204,178,138,0.9)' },
+    ];
+    for (const camp of camps) {
+      const mk = (n: number, size: number, op: number) => {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const along = (Math.random() + Math.random() - 1) * 20; // triangular ±20° arc
+          const a = (camp.deg + along) * DEG;
+          const r = R * (1 + (Math.random() * 2 - 1) * 0.05);
+          arr[i * 3] = Math.cos(a) * r;
+          arr[i * 3 + 1] = (Math.random() * 2 - 1) * 1.1;
+          arr[i * 3 + 2] = Math.sin(a) * r;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+        const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+          map: glowSprite(camp.tint, 'rgba(160,140,110,0.25)', 32),
+          color: 0xd8c49a, size, transparent: true, opacity: op,
+          sizeAttenuation: true, depthWrite: false,
+        }));
+        pts.frustumCulled = false;
+        g.add(pts);
+      };
+      mk(850, 0.16, 0.7);  // fine dust of small bodies
+      mk(300, 0.30, 0.5);  // brighter cores for the big ones
+      const anchor = new THREE.Object3D();
+      anchor.position.set(Math.cos(camp.deg * DEG) * R, 2.6, Math.sin(camp.deg * DEG) * R);
+      g.add(anchor);
+      const el = document.createElement('div');
+      el.className = 'p-label lag-label';
+      el.textContent = this.lang === 'zh' ? camp.cn : camp.en;
+      el.style.color = '#d8c49a';
+      this.labelLayer.appendChild(el);
+      this.trojanLabels.push({ el, anchor });
+    }
+  }
+
   private makeBelt(count: number, inner: number, outer: number, opts?: { yHalf?: number; icy?: boolean }): THREE.Group {
     const group = new THREE.Group();
 
@@ -1712,7 +1771,7 @@ export class SolarEngine {
   }
 
   focusPlanet(node: PlanetNode) {
-    if (node.spec.id === 'jupiter' || node.spec.id === 'saturn') this.ensureMoonSystem(node.spec.id);
+    if (node.spec.id in MOON_SYS) this.ensureMoonSystem(node.spec.id as MoonHost);
     this.setCine(false);
     this.probeFollow = false;
     if (this.surface) this.exitSurfaceView(true);
@@ -1924,6 +1983,7 @@ export class SolarEngine {
   }
 
   private eventDesc(ev: AstroEvent): string {
+    if (ev.info) return this.lang === 'zh' ? (ev.infoCn ?? ev.info) : ev.info;
     const t = STR[this.lang];
     const name = (id: string) => {
       if (id === 'sun') return t.sun;
@@ -2715,6 +2775,7 @@ export class SolarEngine {
     if (this.sky) pushO((this.sky as THREE.Mesh).material as THREE.Material, [0.10, 0.28]);
     this.belt.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
     this.kuiper.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.12, 0.32]));
+    if (this.trojanGroup) this.trojanGroup.traverse((o) => pushO((o as THREE.Points).material as THREE.Material | undefined, [0.10, 0.30]));
     if (this.heliopause) pushO(this.heliopause.material as THREE.MeshBasicMaterial, [0.40, 0.58]);
     if (this.eclipseRig) this.eclipseRig.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
     if (this.sunGlow1) pushO(this.sunGlow1.material as THREE.Material, [0.20, 0.40]);
@@ -2878,6 +2939,7 @@ export class SolarEngine {
     'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn',
     'uranus', 'neptune', 'pluto', 'moon', 'ceres', 'vesta',
     'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus',
+    'phobos', 'deimos', 'ariel', 'titania', 'oberon', 'triton', 'charon',
     'eris', 'haumea', 'makemake',
   ]);
 
@@ -2894,11 +2956,11 @@ export class SolarEngine {
     this.setCine(false);
     this.tween = null;
 
-    if (target.spec.id === 'jupiter' || target.spec.id === 'saturn') this.ensureMoonSystem(target.spec.id);
+    if (target.spec.id in MOON_SYS) this.ensureMoonSystem(target.spec.id as MoonHost);
     const sys = new Set<string>([target.spec.id]);
     if (target.spec.id === 'earth') ['moon', 'iss', 'orbiter'].forEach(id => sys.add(id));
     if (target.spec.id === 'moon') sys.add('orbiter');
-    const hostMoons = MOON_SYS[target.spec.id as 'jupiter' | 'saturn'];
+    const hostMoons = MOON_SYS[target.spec.id as MoonHost];
     if (hostMoons) hostMoons.forEach(m => sys.add(m.id));
 
     this.globe = {
@@ -2938,6 +3000,7 @@ export class SolarEngine {
     if (this.sky) dimMat(this.sky.material as THREE.Material);
     this.dimHidden.push(this.belt); this.belt.visible = false;
     this.dimHidden.push(this.kuiper); this.kuiper.visible = false;
+    if (this.trojanGroup) { this.dimHidden.push(this.trojanGroup); this.trojanGroup.visible = false; }
     if (this.heliopause) { this.dimHidden.push(this.heliopause); this.heliopause.visible = false; }
     if (this.eclipseRig) { this.dimHidden.push(this.eclipseRig); this.eclipseRig.visible = false; }
     if (this.halley) {
@@ -3168,7 +3231,6 @@ export class SolarEngine {
       }
       for (const el of this.lagLabels) el.remove();
       this.lagLabels = [];
-      this.trojans = [];
       this.scene.remove(this.lagrangeGroup);
       this.lagrangeGroup = null;
       this.toast(t.toast.lagrangeOff);
@@ -3192,26 +3254,7 @@ export class SolarEngine {
           this.lagLabels.push(el);
         }
       }
-      // Trojan swarms around Jupiter's L4 / L5
-      for (const li of [4, 5]) {
-        const n = 400;
-        const arr = new Float32Array(n * 3);
-        for (let i = 0; i < n; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const rr = Math.sqrt(Math.random()) * 3.5;
-          arr[i * 3] = Math.cos(a) * rr;
-          arr[i * 3 + 1] = (Math.random() * 2 - 1) * 1.2;
-          arr[i * 3 + 2] = Math.sin(a) * rr;
-        }
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-        const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-          color: 0xd8c49a, size: 0.14, transparent: true, opacity: 0.8, depthWrite: false,
-        }));
-        pts.userData = { pid: 'jupiter', li };
-        this.trojans.push(pts);
-        g.add(pts);
-      }
+      // (Trojan swarms graduated to permanent scene citizens — see buildTrojans)
       this.lagrangeGroup = g;
       this.scene.add(g);
       this.toast(t.toast.lagrangeOn);
@@ -4174,6 +4217,14 @@ export class SolarEngine {
       }
       p.mesh.rotation.y += simDt * p.spec.spin * 0.9;
     }
+    // Trojan camps: keep the ±60° Lagrange geometry against Jupiter's live position
+    if (this.trojanGroup) {
+      const jup = this.planets.find(pl => pl.spec.id === 'jupiter');
+      if (jup) {
+        const jp = jup.body.getWorldPosition(new THREE.Vector3());
+        this.trojanGroup.rotation.y = -Math.atan2(jp.z, jp.x);
+      }
+    }
     if (this.globe) {
       const g = this.globe.node;
       if (this.globeSpinOn) {
@@ -4472,6 +4523,21 @@ export class SolarEngine {
           el.style.transform = `translate(-50%,-140%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
           el.style.opacity = THREE.MathUtils.clamp((dist - 150) / 160, 0, 0.7).toFixed(2);
         }
+      }
+    }
+    // Trojan camp labels ride their anchors (the group tracks Jupiter live)
+    if (this.trojanGroup) {
+      for (const tl of this.trojanLabels) {
+        const el = tl.el;
+        if (this.galaxy || this.gxTrans || this.globe) { el.style.opacity = '0'; continue; }
+        tl.anchor.getWorldPosition(v);
+        const dist = v.distanceTo(this.camera.position);
+        v.project(this.camera);
+        if (v.z > 1 || v.z < -1) { el.style.opacity = '0'; continue; }
+        const x = (v.x * 0.5 + 0.5) * w;
+        const y = (-v.y * 0.5 + 0.5) * h;
+        el.style.transform = `translate(-50%,-140%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+        el.style.opacity = THREE.MathUtils.clamp(1.5 - dist / 160, 0.1, 0.8).toFixed(2);
       }
     }
     // Lagrange-point labels ride their markers

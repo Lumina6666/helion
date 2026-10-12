@@ -26,6 +26,12 @@ export const ELEMENTS: Record<string, Elements> = {
   // belt asteroids — J2000 osculating approximations (rates neglected)
   ceres:   { a: 2.7665, e: 0.0784, i: 10.5868, L: 231.99, p: 153.99, O: 80.25, da: 0, de: 0, di: 0, dL: 7827.1, dp: 0, dO: 0 },
   vesta:   { a: 2.3615, e: 0.0887, i: 7.1420, L: 195.25, p: 253.65, O: 103.81, da: 0, de: 0, di: 0, dL: 9918.0, dp: 0, dO: 0 },
+  // 99942 Apophis — JPL solution #218 (epoch 2024-Oct-17), back-propagated to
+  // J2000 as mean elements: p = Ω+ω = 203.904+126.672, dL in deg/CENTURY
+  // (360°/0.88588 yr — mind the unit; this file's dwarf-planet dL bug taught us).
+  // L nudged +0.04° so the pure two-body propagation puts Apophis beside Earth
+  // on 2029-04-13; Earth-tide bending during the flyby itself is NOT modeled.
+  apophis: { a: 0.92238, e: 0.19115, i: 3.34, L: 203.27, p: 330.576, O: 203.904, da: 0, de: 0, di: 0, dL: 40637.6, dp: 0, dO: 0 },
 };
 
 export function solveKepler(M: number, e: number): number {
