@@ -200,6 +200,7 @@ export class SolarEngine {
     fromPos: THREE.Vector3; midPos: THREE.Vector3; arrPos: THREE.Vector3;
     fromTgt: THREE.Vector3;
     swapped: boolean; whooshed: boolean; boomed: boolean;
+    inner?: boolean;  // toSolar variant: dive all the way into the inner system
   } | null = null;
   private warpCanvas: HTMLCanvasElement | null = null;
   private warpCtx: CanvasRenderingContext2D | null = null;
@@ -2233,7 +2234,7 @@ export class SolarEngine {
       el.className = 'p-label gx-label' + (extra ? ' clickable' : '');
       el.textContent = this.lang === 'zh' ? nameCn : name;
       el.style.opacity = '0';
-      if (extra?.isSun) el.addEventListener('click', () => this.returnToSolarSystem());
+      if (extra?.isSun) el.addEventListener('click', () => this.returnToSolarSystem(true));
       else if (extra?.poi) el.addEventListener('click', () => {
         const poi = extra.poi!;
         if (poi.focusDist) this.focusGalaxyPoi(poi);
@@ -2602,8 +2603,10 @@ export class SolarEngine {
     this.emitSnapshot();
   }
 
-  // easter egg: click the Sun marker — one continuous dive home through the star sea
-  returnToSolarSystem() {
+  // easter egg + galaxy-bar button: one continuous dive home through the star
+  // sea. inner = the full voyage: past the Sun's shoulder and down INTO the
+  // inner solar system (VIEWS[3] framing), longer burn, harder fov kick.
+  returnToSolarSystem(inner = false) {
     if (!this.galaxy || this.gxTrans || this.gxPrep) return;
     if (this.gxFocus) { this.gxFocus = null; this.tween = null; this.emitSnapshot(); }
     this.galaxyObserve = false;
@@ -2611,7 +2614,7 @@ export class SolarEngine {
     this.ensureWarpCanvas();
     this.ensureDustShell();
     this.savedFov = this.camera.fov;
-    const v0 = VIEWS[0];
+    const v0 = inner ? VIEWS[3] : VIEWS[0];
     const arrPos = new THREE.Vector3(
       Math.cos(v0.elevation * DEG) * Math.cos(v0.azimuth * DEG),
       Math.sin(v0.elevation * DEG),
@@ -2619,16 +2622,20 @@ export class SolarEngine {
     ).multiplyScalar(v0.distance);
     const fromPos = this.camera.position.clone();
     if (fromPos.lengthSq() < 1e-6) fromPos.set(36, 40, 47);
-    const midPos = fromPos.clone().normalize().multiplyScalar(7); // skim past the newborn Sun
-    midPos.y += 2;
+    // inner voyage: the control point hugs the Sun so the bezier dives deep
+    // before settling at the inner-system framing (peak proximity lands right
+    // on the t=0.5 scene swap — the marker you dive into ignites into the Sun)
+    const midPos = fromPos.clone().normalize().multiplyScalar(inner ? 10 : 7);
+    midPos.y += inner ? 4 : 2;
     this.gxTrans = {
-      dir: 'toSolar', t: 0, dur: 7,
+      dir: 'toSolar', t: 0, dur: inner ? 10.5 : 7,
       fromPos, midPos, arrPos,
       fromTgt: this.controls.target.clone(),
       swapped: false, whooshed: false, boomed: false,
+      inner,
     };
     this.collectGxFade();
-    this.toast(STR[this.lang].toast.galReturning);
+    this.toast(inner ? STR[this.lang].toast.galDiving : STR[this.lang].toast.galReturning);
     this.emitSnapshot();
   }
 
@@ -2724,7 +2731,7 @@ export class SolarEngine {
     // cinematic dressing — a gentle fov kick + a whisper of roll at peak zoom
     const bump = ssw(0.3, 0.55) * (1 - ssw(0.55, 0.8));
     this.warpIntensity = bump;
-    this.camera.fov = this.savedFov + bump * 8;
+    this.camera.fov = this.savedFov + bump * (fx.inner ? 13 : 8);
     this.camera.updateProjectionMatrix();
     const roll = bump * 0.03 * (toGal ? 1 : -1);
     this.camera.up.set(Math.sin(roll), Math.cos(roll), 0);
@@ -2745,7 +2752,7 @@ export class SolarEngine {
       for (const f of this.gxFadeO) f.mat.opacity = f.base;
       for (const f of this.gxFadeS) f.obj.scale.setScalar(f.base);
       if (toGal) for (const L of this.gxLayers) { L.mat.opacity = L.base; if (L.u) L.u.value = 1; }
-      else this.toast(STR[this.lang].toast.galaxyOff);
+      else this.toast(fx.inner ? STR[this.lang].toast.galArriveInner : STR[this.lang].toast.galaxyOff);
       this.emitSnapshot();
     }
   }

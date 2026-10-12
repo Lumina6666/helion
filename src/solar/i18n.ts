@@ -64,6 +64,7 @@ export interface Strings {
   galaxyCap: string;
   galaxyLabels: string;
   galaxyExit: string;
+  galDiveInner: string;
   galaxyObserve: string;
   galaxyObserveExit: string;
   gxFocusExit: string;
@@ -203,6 +204,8 @@ export interface Strings {
     globeNoProbe: string;
     galaxyOn: string;
     galaxyOff: string;
+    galDiving: string;
+    galArriveInner: string;
     galPrep: string;
     moonSys: string;
     eclipseGeo: string;
@@ -293,6 +296,7 @@ export const STR: Record<Lang, Strings> = {
     galaxyCap: 'THE MILKY WAY · ~100,000 LIGHT-YEARS ACROSS',
     galaxyLabels: 'LABELS',
     galaxyExit: 'EXIT GALAXY VIEW',
+    galDiveInner: '☄ DIVE TO INNER SYSTEM',
     galaxyObserve: 'OBSERVE',
     galaxyObserveExit: 'EXIT OBSERVE · ESC',
     gxFocusExit: 'EXIT FOCUS',
@@ -435,6 +439,8 @@ export const STR: Record<Lang, Strings> = {
       moonSys: 'MOON SYSTEM DEPLOYED — CLICK A MOON TO EXPLORE',
       eclipseGeo: 'ECLIPSE SHADOW GEOMETRY — SCHEMATIC, TRUE PROPORTIONS',
       galaxyOff: 'BACK TO THE SOLAR SYSTEM — TIME RESUMED',
+      galDiving: 'DIVING HOME — PAST THE SUN, INTO THE INNER SYSTEM…',
+      galArriveInner: 'ARRIVED — INNER SOLAR SYSTEM · TIME RESUMED',
       galNoExp: 'N-BODY EXPERIMENT BLOCKED IN GALAXY VIEW',
       galNoProbe: 'GALAXY VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
       galReturning: 'RETURNING TO THE SOLAR SYSTEM…',
@@ -520,6 +526,7 @@ export const STR: Record<Lang, Strings> = {
     galaxyCap: '银河系 · 直径约 100,000 光年',
     galaxyLabels: '标注',
     galaxyExit: '退出银河视图',
+    galDiveInner: '☄ 潜入内太阳系',
     galaxyObserve: '观赏',
     galaxyObserveExit: '退出观赏 · Esc',
     gxFocusExit: '退出聚焦',
@@ -662,6 +669,8 @@ export const STR: Record<Lang, Strings> = {
       moonSys: '卫星系统已展开 — 点击卫星继续探索',
       eclipseGeo: '食·阴影几何演示 — 示意渲染，比例真实',
       galaxyOff: '已返回太阳系，时间恢复流动',
+      galDiving: '正在俯冲回家——掠过太阳，直入内太阳系…',
+      galArriveInner: '已抵达内太阳系 · 时间恢复流动',
       galNoExp: '银河视图中无法启动 N 体实验',
       galNoProbe: '银河视图与探测器模式互斥',
       galReturning: '正在返回太阳系…',

@@ -527,6 +527,7 @@ export default function App() {
             <span className="gb-title">◌ {t.galaxyTitle}</span>
             <button className={`hbtn ${snap.galaxyLabels ? 'active' : ''}`} onClick={() => eng()?.toggleGalaxyLabels()}>{t.galaxyLabels}</button>
             <button className="hbtn" onClick={() => { if (eng()?.toggleGalaxyObserve()) setHudOn(false); }}>{t.galaxyObserve}</button>
+            <button className="hbtn gb-dive" onClick={() => eng()?.returnToSolarSystem(true)}>{t.galDiveInner}</button>
             <button className="hbtn gb-exit" onClick={() => eng()?.exitGalaxyView()}>{t.galaxyExit}</button>
           </div>
           {snap.gxFocus && (
