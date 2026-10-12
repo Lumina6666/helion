@@ -62,6 +62,8 @@ export interface Strings {
   galaxyExit: string;
   galaxyObserve: string;
   galaxyObserveExit: string;
+  gxFocusExit: string;
+  gxFocusHint: string;
   diameter: string;
   vsEarth: string;
   rangeNow: string;
@@ -285,6 +287,8 @@ export const STR: Record<Lang, Strings> = {
     galaxyExit: 'EXIT GALAXY VIEW',
     galaxyObserve: 'OBSERVE',
     galaxyObserveExit: 'EXIT OBSERVE · ESC',
+    gxFocusExit: 'EXIT FOCUS',
+    gxFocusHint: 'drag to orbit · scroll to zoom · click the label again to leave',
     diameter: 'DIAMETER',
     vsEarth: 'VS EARTH · LOG SCALE',
     rangeNow: 'RANGE NOW',
@@ -506,6 +510,8 @@ export const STR: Record<Lang, Strings> = {
     galaxyExit: '退出银河视图',
     galaxyObserve: '观赏',
     galaxyObserveExit: '退出观赏 · Esc',
+    gxFocusExit: '退出聚焦',
+    gxFocusHint: '拖动环绕 · 滚轮缩放 · 再点一次标签离开',
     diameter: '直径',
     vsEarth: '与地球对比 · 对数比例',
     rangeNow: '当前距离',

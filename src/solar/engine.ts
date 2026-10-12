@@ -49,6 +49,7 @@ export interface HudSnapshot {
   galaxyLabels: boolean;
   galaxyObserve: boolean;
   gxTrans: boolean;
+  gxFocus: { id: string; name: string; nameCn: string; desc: string; descCn: string } | null;
   experiment: boolean;
   bloom: boolean;
   shotName: string;
@@ -210,6 +211,10 @@ export class SolarEngine {
   private gxFadeO: Array<{ mat: THREE.Material; base: number; win: [number, number] }> = [];
   private gxFadeS: Array<{ obj: THREE.Object3D; base: number; win: [number, number] }> = [];
   private gxLayers: Array<{ mat: THREE.Material; base: number; win: [number, number]; u: { value: number } | null }> = [];
+  private gxPulse: Array<{ mat: THREE.Material; base: number; amp: number; speed: number; phase: number }> = [];
+  private gxFocus: { poi: GalaxyPoi; anchor: THREE.Object3D; savedPos: THREE.Vector3; savedTgt: THREE.Vector3 } | null = null;
+  private gxAnchors = new Map<string, THREE.Object3D>(); // live local anchors — the galaxy group slowly rotates, so world positions drift
+  private gxGlowDim: Array<{ mat: THREE.SpriteMaterial; pos: THREE.Vector3; base: number }> = []; // far-view glow anchors dim as the camera closes in
   private dustShell: THREE.Points | null = null; // near-field parallax dust (replaces the tunnel)
   private dustMeta: Array<{ x: number; y: number; z: number; v: number }> = [];
   private warpSfxWhoosh: HTMLAudioElement | null = null;
@@ -2169,7 +2174,11 @@ export class SolarEngine {
       el.textContent = this.lang === 'zh' ? nameCn : name;
       el.style.opacity = '0';
       if (extra?.isSun) el.addEventListener('click', () => this.returnToSolarSystem());
-      else if (extra?.poi) el.addEventListener('click', () => this.toast(this.lang === 'zh' ? extra.poi!.descCn : extra.poi!.desc));
+      else if (extra?.poi) el.addEventListener('click', () => {
+        const poi = extra.poi!;
+        if (poi.focusDist) this.focusGalaxyPoi(poi);
+        else this.toast(this.lang === 'zh' ? poi.descCn : poi.desc);
+      });
       this.labelLayer.appendChild(el);
       this.galaxyLabels.push({ el, obj, name, nameCn, poi: extra?.poi, isSun: extra?.isSun });
     };
@@ -2211,15 +2220,19 @@ export class SolarEngine {
     const companionCloud = (
       count: number, center: [number, number, number], size: number, opacity: number,
       sampler: () => [number, number, number],
-      rgb: [number, number, number], win: [number, number],
+      rgb: [number, number, number] | ((x: number, y: number, z: number) => [number, number, number]),
+      win: [number, number],
+      pulse?: { amp: number; speed: number },
     ) => {
       const pos = new Float32Array(count * 3);
       const col = new Float32Array(count * 3);
       for (let i = 0; i < count; i++) {
         const [x, y, z] = sampler();
-        pos[i * 3] = center[0] + x; pos[i * 3 + 1] = center[1] + y; pos[i * 3 + 2] = center[2] + z;
+        const px = center[0] + x, py = center[1] + y, pz = center[2] + z;
+        pos[i * 3] = px; pos[i * 3 + 1] = py; pos[i * 3 + 2] = pz;
+        const c = typeof rgb === 'function' ? rgb(px, py, pz) : rgb;
         const v = 0.72 + Math.random() * 0.28; // per-star brightness jitter
-        col[i * 3] = rgb[0] * v; col[i * 3 + 1] = rgb[1] * v; col[i * 3 + 2] = rgb[2] * v;
+        col[i * 3] = c[0] * v; col[i * 3 + 1] = c[1] * v; col[i * 3 + 2] = c[2] * v;
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -2232,18 +2245,19 @@ export class SolarEngine {
       pts.frustumCulled = false;
       g.add(pts);
       this.gxLayers.push({ mat, base: opacity, win, u: null });
+      if (pulse) this.gxPulse.push({ mat, base: opacity, amp: pulse.amp, speed: pulse.speed, phase: Math.random() * Math.PI * 2 });
       return pts;
     };
-    const poi3 = (cx: number, cy: number, cz: number, name: string, nameCn: string, desc: string, descCn: string) => {
+    const poi3 = (cx: number, cy: number, cz: number, name: string, nameCn: string, desc: string, descCn: string, focusDist?: number, focusAt?: [number, number, number]) => {
       const anchor = new THREE.Object3D();
       anchor.position.set(cx, cy, cz);
       g.add(anchor);
-      addLabel(anchor, name, nameCn, { poi: { id: name, name, nameCn, pos: [cx, cy, cz], desc, descCn, color: 'rgba(255,220,170,1)' } });
+      addLabel(anchor, name, nameCn, { poi: { id: name, name, nameCn, pos: [cx, cy, cz], desc, descCn, color: 'rgba(255,220,170,1)', focusDist, focusAt } });
     };
 
     // soft glow anchors so the clouds read from the default face-on view
     {
-      const glowAt = (c: [number, number, number], scale: number, rgba: string) => {
+      const glowAt = (c: [number, number, number], scale: number, rgba: string, base: number) => {
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({
           map: glowTex, color: new THREE.Color(rgba), transparent: true, opacity: 0,
           blending: THREE.AdditiveBlending, depthWrite: false,
@@ -2251,62 +2265,123 @@ export class SolarEngine {
         sp.position.set(c[0], c[1], c[2]);
         sp.scale.setScalar(scale);
         g.add(sp);
-        this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base: 0.35, win: [0.72, 0.88], u: null });
+        this.gxLayers.push({ mat: sp.material as THREE.SpriteMaterial, base, win: [0.72, 0.88], u: null });
+        this.gxGlowDim.push({ mat: sp.material as THREE.SpriteMaterial, pos: new THREE.Vector3(c[0], c[1], c[2]), base });
       };
-      glowAt([79.9, -88.0, 108.3], 14, 'rgba(255,236,190,1)');
-      glowAt([113.4, -139.2, 65.3], 11, 'rgba(255,225,180,1)');
+      glowAt([79.9, -88.0, 108.3], 20, 'rgba(255,236,190,1)', 0.42);
+      glowAt([113.4, -139.2, 65.3], 15, 'rgba(255,225,180,1)', 0.36);
     }
 
-    // LMC — irregular dwarf: a bright central BAR + loose clumpy disk.
-    // (it has no spiral arms — that shape difference IS the astronomy)
-    companionCloud(2000, [79.9, -88.0, 108.3], 1.25, 0.85, () => {
+    // ── LMC — layered build: halo / bar+clumpy disk / dense core / 30 Doradus ──
+    // (irregular dwarf: a bright central BAR, no spiral arms — that shape IS the astronomy)
+    const LMC: [number, number, number] = [79.9, -88.0, 108.3];
+    // halo — sparse old blue-white stars reaching far beyond the visible disk
+    companionCloud(1800, LMC, 0.62, 0.38, () =>
+      [this.gauss() * 6.5, this.gauss() * 3.2, this.gauss() * 6.5], [0.70, 0.80, 1.0], [0.72, 0.88]);
+    // (halo layer opacity lifted to keep the cloud readable from far side views)
+    // bar + clumpy disk — the main body
+    companionCloud(5600, LMC, 0.34, 0.85, () => {
       if (Math.random() < 0.55) {
         // the LMC bar, tilted ~20° off the galactic plane
         const t = this.gauss() * 5.5;
         const tilt = 0.35;
         return [t, this.gauss() * 1.1 + t * Math.sin(tilt) * 0.35, this.gauss() * 1.4];
       }
-      // clumpy disk: several offset knots (giant HII regions like 30 Dor)
+      // clumpy disk: several offset knots (giant HII regions)
       const knots = [[3.5, 1.5, 0], [-3, -1, 1.5], [0.5, -2.5, -1], [-1.5, 2, -1.2]];
-      const k = knots[Math.floor(Math.random() * knots.length)];
+      const k = knots[(Math.random() * knots.length) | 0];
       return [k[0] + this.gauss() * 2.6, k[1] + this.gauss() * 1.8, k[2] + this.gauss() * 2.6];
     }, [1.0, 0.9, 0.72], [0.72, 0.88]);
-    poi3(79.9, -88.0 + 9, 108.3, 'LMC · 163,000 LY', '大麦哲伦云 · 16.3 万光年',
-      'The Milky Way\'s largest satellite galaxy. Supernova 1987A — the nearest in the telescopic era — exploded here. It will merge with us in ~2.4 billion years. Southern-hemisphere skies only.',
-      '银河最大的伴星系。望远镜时代最近的超新星 1987A 就爆发在这里。约 24 亿年后将被银河并合。仅南半球天空可见。');
+    // dense bar core
+    companionCloud(1400, LMC, 0.27, 0.95, () => {
+      const t = this.gauss() * 2.4;
+      const tilt = 0.35;
+      return [t, this.gauss() * 0.7 + t * Math.sin(tilt) * 0.35, this.gauss() * 0.9];
+    }, [1.0, 0.97, 0.88], [0.72, 0.88], { amp: 0.06, speed: 0.7 });
+    // 30 Doradus — the Tarantula Nebula, largest star-forming region in the Local
+    // Group: a cyan knot off the bar's end + a faint pink hydrogen fringe
+    companionCloud(520, [LMC[0] + 5.2, LMC[1] - 2.0, LMC[2] + 1.0], 0.42, 0.9, () =>
+      [this.gauss() * 1.05, this.gauss() * 0.8, this.gauss() * 1.05], [0.60, 0.94, 1.0], [0.72, 0.88], { amp: 0.14, speed: 1.1 });
+    companionCloud(170, [LMC[0] + 5.2, LMC[1] - 2.0, LMC[2] + 1.0], 0.55, 0.4, () =>
+      [this.gauss() * 1.5, this.gauss() * 1.1, this.gauss() * 1.5], [1.0, 0.58, 0.68], [0.72, 0.88]);
+    poi3(LMC[0], LMC[1] + 9, LMC[2], 'LMC · 163,000 LY', '大麦哲伦云 · 16.3 万光年',
+      'The Milky Way\'s largest satellite galaxy. Supernova 1987A exploded here; the cyan knot is the Tarantula Nebula, the largest star-forming region in the Local Group. It will merge with us in ~2.4 billion years. Southern skies only. Click to fly in.',
+      '银河最大的伴星系。超新星 1987A 就爆发在这里；青色亮斑是蜘蛛星云——本星系群最大的恒星形成区。约 24 亿年后将被银河并合。仅南半球可见。点击标签可飞近细看。',
+      26, LMC);
 
-    // SMC — smaller, dimmer, visibly STRETCHED: the Milky Way and the LMC
-    // are pulling it apart right now
-    companionCloud(1200, [113.4, -139.2, 65.3], 1.1, 0.75, () => {
+    // ── SMC — smaller, dimmer, visibly STRETCHED: the Milky Way and the LMC
+    // are pulling it apart right now ──
+    const SMC: [number, number, number] = [113.4, -139.2, 65.3];
+    companionCloud(1000, SMC, 0.55, 0.36, () =>
+      [this.gauss() * 7.5, this.gauss() * 3.4, this.gauss() * 5.5], [0.70, 0.79, 1.0], [0.72, 0.88]);
+    companionCloud(3100, SMC, 0.30, 0.78, () => {
       const t = this.gauss() * 6.5;
       const tail = Math.random() < 0.12 ? Math.random() * 9 : 0; // tidal tail toward LMC
       return [t - tail * 0.6, this.gauss() * 2.0 - tail * 0.5, this.gauss() * 2.4 + tail * 0.4];
     }, [1.0, 0.86, 0.66], [0.72, 0.88]);
-    poi3(113.4, -139.2 + 8, 65.3, 'SMC · 200,000 LY', '小麦哲伦云 · 20 万光年',
-      'Visible to southern naked eyes, unknown to Europe before Magellan\'s circumnavigation. Its stars are being stretched between the Milky Way and the LMC.',
-      '南半球肉眼可见，麦哲伦环球航行前欧洲一无所知。它的恒星正被银河与大麦哲伦云双向拉扯变形。');
+    companionCloud(900, SMC, 0.25, 0.95, () =>
+      [this.gauss() * 2.6, this.gauss() * 1.2, this.gauss() * 1.8], [1.0, 0.94, 0.82], [0.72, 0.88], { amp: 0.06, speed: 0.8 });
+    poi3(SMC[0], SMC[1] + 8, SMC[2], 'SMC · 200,000 LY', '小麦哲伦云 · 20 万光年',
+      'Visible to southern naked eyes, unknown to Europe before Magellan. Its stars are being stretched between the Milky Way and the LMC. Click to fly in.',
+      '南半球肉眼可见，麦哲伦环球航行前欧洲一无所知。它的恒星正被银河与大麦哲伦云双向拉扯变形。点击标签可飞近细看。',
+      22, SMC);
 
-    // Sagittarius Stream — a dwarf galaxy being shredded in real time.
-    // Core remnant + a near-polar great-circle star stream (~76° to the disk).
-    companionCloud(600, [29.3, -16.4, -30.3], 0.95, 0.8, () =>
-      [this.gauss() * 2.4, this.gauss() * 2.4, this.gauss() * 2.4], [1.0, 0.72, 0.5], [0.74, 0.90]);
+    // ── the Magellanic Bridge — young BLUE stars torn out between the clouds
+    // (real structure, confirmed to contain stars since the 1970s) ──
+    companionCloud(850, [0, 0, 0], 0.42, 0.65, () => {
+      const u = Math.random();
+      return [
+        LMC[0] + (SMC[0] - LMC[0]) * u + this.gauss() * 2.6,
+        LMC[1] + (SMC[1] - LMC[1]) * u + this.gauss() * 2.0,
+        LMC[2] + (SMC[2] - LMC[2]) * u + this.gauss() * 2.6,
+      ];
+    }, [0.68, 0.84, 1.0], [0.74, 0.90]);
+
+    // ── the Magellanic Stream — hydrogen GAS (not stars) stripped from the
+    // clouds, arcing over the south galactic pole. Faint on purpose: it IS faint ──
+    const msE1 = new THREE.Vector3(SMC[0], SMC[1], SMC[2]).normalize();
+    const msE2 = new THREE.Vector3(0, -1, 0).addScaledVector(msE1, msE1.y).normalize();
+    companionCloud(2400, [0, 0, 0], 1.0, 0.42, () => {
+      const th = -0.35 + Math.random() * 2.9; // Leading Arm (θ<0) + Trailing Stream past the pole
+      const r = 190 + this.gauss() * 12;
+      const p = msE1.clone().multiplyScalar(Math.cos(th) * r).addScaledVector(msE2, Math.sin(th) * r);
+      const w = 1.6 + Math.abs(Math.sin(th * 1.7)) * 2.0;
+      return [p.x + this.gauss() * w, p.y + this.gauss() * w, p.z + this.gauss() * w];
+    }, [0.55, 0.68, 0.86], [0.74, 0.90]);
     {
-      // stream ring: orbit plane contains the core direction, steep to the disk
-      const e1 = new THREE.Vector3(29.3, -16.4, -30.3).normalize();
-      const e2 = new THREE.Vector3(0, 1, 0).addScaledVector(e1, -e1.y).normalize();
-      companionCloud(2500, [0, 0, 0], 0.85, 0.55, () => {
-        // density peaks at the core (θ=0) and the opposite wrap (θ=π)
-        const pick = Math.random();
-        const th = pick < 0.4 ? this.gauss() * 0.5 : pick < 0.7 ? Math.PI + this.gauss() * 0.7 : Math.random() * Math.PI * 2;
-        const r = 45 + this.gauss() * 3.2;
-        const p = e1.clone().multiplyScalar(Math.cos(th) * r).addScaledVector(e2, Math.sin(th) * r);
-        p.x += this.gauss() * 1.1; p.y += this.gauss() * 1.1; p.z += this.gauss() * 1.1;
-        return [p.x, p.y, p.z];
-      }, [1.0, 0.68, 0.45], [0.74, 0.90]);
+      const mp = msE2.clone().multiplyScalar(195);
+      poi3(mp.x, mp.y, mp.z, 'MAGELLANIC STREAM · GAS', '麦哲伦流 · 气体',
+        'Not stars — hydrogen gas torn from the Magellanic Clouds by a past close encounter, arcing over the south galactic pole for more than half a sky. Rendered faint blue-grey because that is what it is: cold, starless gas.',
+        '不是恒星——是麦哲伦云在过去一次近距离相遇中被撕出的氢气带，越过南银极延伸超过半个天空。故意渲染得暗淡蓝灰，因为它本来就是寒冷、没有恒星的气体。');
     }
-    poi3(29.3, -16.4 - 7, -30.3, 'SAGITTARIUS STREAM', '人马座星流',
-      'A dwarf galaxy being torn apart by the Milky Way\'s tides right now — stretched into a star stream wrapping nearly the whole galaxy. The halo was built from meals like this. Found only in 1994.',
-      '一个正在被银河潮汐力当场撕碎的矮星系——被拉成环绕银河近一圈的恒星流。银晕就是这样一口一口吃出来的。1994 年才被发现。');
+
+    // ── Sagittarius dwarf + stream — a galaxy being shredded in real time ──
+    const SGR: [number, number, number] = [29.3, -16.4, -30.3];
+    companionCloud(1500, SGR, 0.35, 0.85, () =>
+      [this.gauss() * 2.4, this.gauss() * 2.4, this.gauss() * 2.4], [1.0, 0.74, 0.52], [0.74, 0.90]);
+    // M54 — the bright globular cluster living in its core (real)
+    companionCloud(120, SGR, 0.5, 1.0, () =>
+      [this.gauss() * 0.5, this.gauss() * 0.5, this.gauss() * 0.5], [1.0, 0.95, 0.85], [0.74, 0.90], { amp: 0.10, speed: 0.9 });
+    // the stream ring: orbit plane contains the core direction, steep to the disk;
+    // leading arm (near the core) warmer, far wrap dimmer & redder — an age/metallicity cue
+    const e1 = new THREE.Vector3(SGR[0], SGR[1], SGR[2]).normalize();
+    const e2 = new THREE.Vector3(0, 1, 0).addScaledVector(e1, -e1.y).normalize();
+    companionCloud(6500, [0, 0, 0], 0.38, 0.7, () => {
+      const pick = Math.random();
+      const th = pick < 0.4 ? this.gauss() * 0.5 : pick < 0.7 ? Math.PI + this.gauss() * 0.7 : Math.random() * Math.PI * 2;
+      const r = 45 + this.gauss() * 3.2;
+      const p = e1.clone().multiplyScalar(Math.cos(th) * r).addScaledVector(e2, Math.sin(th) * r);
+      const w = 1.1 + Math.abs(Math.sin(th)) * 1.0;
+      p.x += this.gauss() * w; p.y += this.gauss() * w; p.z += this.gauss() * w;
+      return [p.x, p.y, p.z];
+    }, (px, py, pz) => {
+      const c = (px * e1.x + py * e1.y + pz * e1.z) / Math.max(1e-6, Math.hypot(px, py, pz));
+      return c > 0 ? [1.0, 0.76, 0.55] as [number, number, number] : [0.90, 0.62, 0.45] as [number, number, number];
+    }, [0.74, 0.90]);
+    poi3(SGR[0], SGR[1] - 7, SGR[2], 'SAGITTARIUS STREAM', '人马座星流',
+      'A dwarf galaxy being torn apart by the Milky Way\'s tides right now — stretched into a star stream wrapping nearly the whole galaxy. The bright dot in its core is globular cluster M54. Found only in 1994. Click to fly in.',
+      '一个正在被银河潮汐力当场撕碎的矮星系——被拉成环绕银河近一圈的恒星流。核心亮点是球状星团 M54。1994 年才被发现。点击标签可飞近细看。',
+      20, SGR);
 
     // points of interest
     for (const poi of GALAXY_POIS) {
@@ -2405,6 +2480,7 @@ export class SolarEngine {
     if (!g || this.gxTrans) return;
     // user-facing exit rides the anchor home — same dive as the Sun marker, no hard cut
     if (!silent) { this.returnToSolarSystem(); return; }
+    if (this.gxFocus) { this.gxFocus = null; this.tween = null; }
     this.applyGalaxyScene(false);
     this.galaxy = null;
     this.galaxyObserve = false;
@@ -2412,9 +2488,64 @@ export class SolarEngine {
     this.emitSnapshot();
   }
 
+  // companion-galaxy focus: fly the camera to a cloud and hand the user an orbit around it
+  focusGalaxyPoi(poi: GalaxyPoi) {
+    if (!this.galaxy || this.gxTrans || this.gxPrep) return;
+    if (this.gxFocus?.poi.id === poi.id) { this.exitGalaxyFocus(); return; }
+    const at = poi.focusAt ?? poi.pos;
+    let anchor = this.gxAnchors.get(poi.id);
+    if (!anchor) {
+      anchor = new THREE.Object3D();
+      anchor.position.set(at[0], at[1], at[2]);
+      this.galaxyGroup!.add(anchor); // rides the group's slow rotation — always current
+      this.gxAnchors.set(poi.id, anchor);
+    }
+    const target = anchor.getWorldPosition(new THREE.Vector3());
+    const dist = poi.focusDist ?? 20;
+    if (!this.gxFocus) {
+      this.gxFocus = { poi, anchor, savedPos: this.camera.position.clone(), savedTgt: this.controls.target.clone() };
+    } else {
+      this.gxFocus.poi = poi;
+      this.gxFocus.anchor = anchor;
+    }
+    // approach from outside-and-above so the galactic disk stays in frame as the backdrop
+    const dir = target.clone().normalize().multiplyScalar(0.55).add(new THREE.Vector3(0.2, 0.6, 0.15)).normalize();
+    const toPos = target.clone().addScaledVector(dir, dist);
+    this.controls.enabled = false;
+    this.controls.minDistance = 3;
+    this.controls.maxDistance = 120;
+    this.tween = {
+      t: 0, dur: 2.6,
+      fromPos: this.camera.position.clone(), toPos,
+      fromTgt: this.controls.target.clone(), toTgt: target,
+      after: () => { this.controls.enabled = true; this.emitSnapshot(); },
+    };
+    this.emitSnapshot();
+  }
+
+  exitGalaxyFocus() {
+    const f = this.gxFocus;
+    if (!f || this.gxTrans) return;
+    this.gxFocus = null;
+    this.controls.enabled = false;
+    this.tween = {
+      t: 0, dur: 2.6,
+      fromPos: this.camera.position.clone(), toPos: f.savedPos,
+      fromTgt: this.controls.target.clone(), toTgt: f.savedTgt,
+      after: () => {
+        this.controls.enabled = true;
+        this.controls.minDistance = 60;  // back to the rim-hugging galaxy limits
+        this.controls.maxDistance = 300;
+        this.emitSnapshot();
+      },
+    };
+    this.emitSnapshot();
+  }
+
   // easter egg: click the Sun marker — one continuous dive home through the star sea
   returnToSolarSystem() {
     if (!this.galaxy || this.gxTrans || this.gxPrep) return;
+    if (this.gxFocus) { this.gxFocus = null; this.tween = null; this.emitSnapshot(); }
     this.galaxyObserve = false;
     this.controls.enabled = false;
     this.ensureWarpCanvas();
@@ -3884,6 +4015,10 @@ export class SolarEngine {
       gxTrans: this.gxTrans !== null,
       galaxyLabels: this.galaxyLabelsOn,
       galaxyObserve: this.galaxyObserve,
+      gxFocus: this.gxFocus
+        ? { id: this.gxFocus.poi.id, name: this.gxFocus.poi.name, nameCn: this.gxFocus.poi.nameCn,
+            desc: this.gxFocus.poi.desc, descCn: this.gxFocus.poi.descCn }
+        : null,
       experiment: this.experiment !== null,
       bloom: this.bloomOn,
       shotName: this.cine ? (zh ? shot.nameCn : shot.name) : '',
@@ -4055,6 +4190,26 @@ export class SolarEngine {
       if (this.galaxy) {
         this.galaxyGroup.rotation.y += dt * 0.012; // gentle, perceptible drift
         if (this.galaxySun && !this.gxTrans) this.galaxySun.scale.setScalar(3.2 + Math.sin(this.pulseT * 3) * 0.9);
+        // cosmetic shimmer on star-forming knots & dense cores (pure dressing, marked as such)
+        if (this.gxPulse.length && !this.gxTrans) {
+          for (const P of this.gxPulse) P.mat.opacity = P.base * (1 + P.amp * Math.sin(this.pulseT * P.speed + P.phase));
+        }
+        // far-view glow anchors are a distance crutch — dim them as the camera closes in
+        if (this.gxGlowDim.length && !this.gxTrans) {
+          for (const G of this.gxGlowDim) {
+            const w = this.galaxyGroup.localToWorld(G.pos.clone());
+            const d = w.distanceTo(this.camera.position);
+            G.mat.opacity = G.base * THREE.MathUtils.clamp((d - 30) / 70, 0.08, 1);
+          }
+        }
+        // companion-focus tracking: the galaxy rotates, so the focused cloud drifts —
+        // ease the orbit target to its live world position and carry the camera along
+        if (this.gxFocus && !this.gxTrans && !this.tween) {
+          const w = this.gxFocus.anchor.getWorldPosition(new THREE.Vector3());
+          const prev = this.controls.target.clone();
+          this.controls.target.lerp(w, 1 - Math.exp(-dt * 3));
+          this.camera.position.add(this.controls.target.clone().sub(prev));
+        }
       }
       this.updateGalaxyLabels(); // its own guard hides labels off-mode / mid-transition
     }

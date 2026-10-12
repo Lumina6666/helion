@@ -525,6 +525,14 @@ export default function App() {
             <button className="hbtn" onClick={() => { if (eng()?.toggleGalaxyObserve()) setHudOn(false); }}>{t.galaxyObserve}</button>
             <button className="hbtn gb-exit" onClick={() => eng()?.exitGalaxyView()}>{t.galaxyExit}</button>
           </div>
+          {snap.gxFocus && (
+            <div id="gxfocus-card">
+              <div className="gxf-name">{lang === 'zh' ? snap.gxFocus.nameCn : snap.gxFocus.name}</div>
+              <div className="gxf-desc">{lang === 'zh' ? snap.gxFocus.descCn : snap.gxFocus.desc}</div>
+              <div className="gxf-hint">{t.gxFocusHint}</div>
+              <button className="hbtn gxf-exit" onClick={() => eng()?.exitGalaxyFocus()}>{t.gxFocusExit}</button>
+            </div>
+          )}
         </>
       )}
 

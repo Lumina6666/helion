@@ -297,6 +297,8 @@ export interface GalaxyPoi {
   pos: [number, number, number];
   desc: string; descCn: string;
   color: string;
+  focusDist?: number; // if set, clicking the label flies the camera in (orbit-the-cloud focus mode)
+  focusAt?: [number, number, number]; // the actual cloud center (label anchor floats above/below it)
 }
 export const GALAXY_SUN_POS: [number, number, number] = [-20.8, 0.5, 15.6];
 export const GALAXY_SUN_LABEL = { name: 'SUN — YOU ARE HERE', nameCn: '太阳 · 你在这里' };
