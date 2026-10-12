@@ -157,6 +157,9 @@ export class SolarEngine {
   private orbitLines: THREE.LineLoop[] = [];
   private stars!: THREE.Points;
   private belt!: THREE.Group;
+  private kuiper!: THREE.Group;
+  private heliopause: THREE.Mesh | null = null;
+  private helioLabel: HTMLElement | null = null;
   private sun!: THREE.Mesh;
   private moonNode: PlanetNode | null = null;
   private hillOn = false;
@@ -444,6 +447,26 @@ export class SolarEngine {
     // asteroid belt between Mars (30) and Jupiter (43)
     this.belt = this.makeBelt(2400, 33.8, 39.0);
     this.scene.add(this.belt);
+
+    // Kuiper belt — 30–50 AU compressed to 80–105 units. Eris (100),
+    // Makemake (96) and Haumea (92) live right inside it. Icy & fat.
+    this.kuiper = this.makeBelt(1800, 80, 105, { yHalf: 4.2, icy: true });
+    this.scene.add(this.kuiper);
+
+    // heliopause — the bubble the Voyagers punched through (~121 AU real)
+    {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x6fc8ff, transparent: true, opacity: 0.04,
+        side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      this.heliopause = new THREE.Mesh(new THREE.SphereGeometry(118, 48, 32), mat);
+      this.scene.add(this.heliopause);
+      const hl = document.createElement('div');
+      hl.className = 'p-label helio-label';
+      hl.textContent = this.lang === 'zh' ? '日球层顶 · ~121 AU' : 'HELIOPAUSE · ~121 AU';
+      this.labelLayer.appendChild(hl);
+      this.helioLabel = hl;
+    }
 
     // the Moon — real period & inclination, phases anchored to a true new moon
     this.buildMoon();
@@ -1272,7 +1295,7 @@ export class SolarEngine {
 
   // asteroid belt: real 3D rocks (instanced, noise-deformed icosahedra)
   // plus a faint dust layer of soft round sprites.
-  private makeBelt(count: number, inner: number, outer: number): THREE.Group {
+  private makeBelt(count: number, inner: number, outer: number, opts?: { yHalf?: number; icy?: boolean }): THREE.Group {
     const group = new THREE.Group();
 
     // ---- rock geometry with welded, deterministically jittered vertices
@@ -1295,14 +1318,15 @@ export class SolarEngine {
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = inner + Math.pow(Math.random(), 0.7) * (outer - inner);
-      const y = (Math.random() - 0.5) * 1.7;
+      const y = (Math.random() - 0.5) * 2 * (opts?.yHalf ?? 0.85);
       dummy.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
       dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
       const s = 0.05 + Math.pow(Math.random(), 2.6) * 0.34; // many small, few large
       dummy.scale.set(s * (0.75 + Math.random() * 0.5), s, s * (0.75 + Math.random() * 0.5));
       dummy.updateMatrix();
       rocks.setMatrixAt(i, dummy.matrix);
-      col.setHSL(0.07 + Math.random() * 0.05, 0.08 + Math.random() * 0.16, 0.16 + Math.random() * 0.26);
+      if (opts?.icy) col.setHSL(0.55 + Math.random() * 0.08, 0.10 + Math.random() * 0.12, 0.30 + Math.random() * 0.25);
+      else col.setHSL(0.07 + Math.random() * 0.05, 0.08 + Math.random() * 0.16, 0.16 + Math.random() * 0.26);
       rocks.setColorAt(i, col);
     }
     rocks.instanceMatrix.needsUpdate = true;
@@ -1525,6 +1549,7 @@ export class SolarEngine {
     for (const p of this.planets) {
       if (p.label) p.label.textContent = lang === 'zh' ? p.spec.cn : p.spec.name;
     }
+    if (this.helioLabel) this.helioLabel.textContent = lang === 'zh' ? '日球层顶 · ~121 AU' : 'HELIOPAUSE · ~121 AU';
     for (const L of this.lmLabels) L.el.textContent = lang === 'zh' ? L.lm.nameCn : L.lm.name;
     for (const L of this.galaxyLabels) L.el.textContent = lang === 'zh' ? L.nameCn : L.name;
     this.voyagers.forEach(r => { r.lastAu = -1; }); // force live-range refresh
@@ -2076,6 +2101,33 @@ export class SolarEngine {
     this.galaxySun = marker(GALAXY_SUN_POS, 'rgba(127,220,255,1)', 3.2, [0.62, 0.78]);
     addLabel(this.galaxySun, GALAXY_SUN_LABEL.name, GALAXY_SUN_LABEL.nameCn, { isSun: true });
 
+    // the Oort cloud — the true outer boundary of the solar system, a
+    // whisper-thin shell around the Sun marker (0.03–1.6 light-years real)
+    {
+      const N = 2600, R = 1.7;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2;
+        const rr = R * (0.8 + Math.random() * 0.4);
+        const sq = Math.sqrt(1 - u * u);
+        pos[i * 3] = GALAXY_SUN_POS[0] + rr * sq * Math.cos(a);
+        pos[i * 3 + 1] = GALAXY_SUN_POS[1] + rr * u;
+        pos[i * 3 + 2] = GALAXY_SUN_POS[2] + rr * sq * Math.sin(a);
+      }
+      const og = new THREE.BufferGeometry();
+      og.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const om = new THREE.PointsMaterial({
+        color: 0x9fd8ff, size: 0.045, transparent: true, opacity: 0.55,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      g.add(new THREE.Points(og, om));
+      this.gxLayers.push({ mat: om, base: 0.55, win: [0.68, 0.84], u: null });
+      const anchor = new THREE.Object3D();
+      anchor.position.set(GALAXY_SUN_POS[0], GALAXY_SUN_POS[1] + 2.6, GALAXY_SUN_POS[2]);
+      g.add(anchor);
+      addLabel(anchor, 'OORT CLOUD · 0.03–1.6 LY', '奥尔特云 · 0.03–1.6 光年');
+    }
+
     // points of interest
     for (const poi of GALAXY_POIS) {
       const sp = marker(poi.pos, poi.color, poi.id === 'sgra' ? 4.5 : 2.2, [0.70, 0.85]);
@@ -2351,6 +2403,8 @@ export class SolarEngine {
     for (const c of this.scene.children) extraLine(c);
     if (this.sky) pushO((this.sky as THREE.Mesh).material as THREE.Material, [0.10, 0.28]);
     this.belt.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
+    this.kuiper.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.12, 0.32]));
+    if (this.heliopause) pushO(this.heliopause.material as THREE.MeshBasicMaterial, [0.40, 0.58]);
     if (this.sunGlow1) pushO(this.sunGlow1.material as THREE.Material, [0.20, 0.40]);
     if (this.sunGlow2) pushO(this.sunGlow2.material as THREE.Material, [0.22, 0.42]);
     // a farewell in distance order — the outer worlds leave first
@@ -2571,6 +2625,8 @@ export class SolarEngine {
     dimMat(this.stars.material as THREE.Material);
     if (this.sky) dimMat(this.sky.material as THREE.Material);
     this.dimHidden.push(this.belt); this.belt.visible = false;
+    this.dimHidden.push(this.kuiper); this.kuiper.visible = false;
+    if (this.heliopause) { this.dimHidden.push(this.heliopause); this.heliopause.visible = false; }
     if (this.halley) {
       this.dimHidden.push(this.halley.tail); this.halley.tail.visible = false;
       this.dimHidden.push(this.halley.trail); this.halley.trail.visible = false;
@@ -3828,6 +3884,14 @@ export class SolarEngine {
     this.updateLagrange();
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
+    this.kuiper.rotation.y += simDt * 0.004;
+    // heliopause brightens while a Voyager holds the spotlight
+    if (this.heliopause) {
+      const hot = this.focus && (this.focus.spec.id === 'voyager1' || this.focus.spec.id === 'voyager2');
+      const hm = this.heliopause.material as THREE.MeshBasicMaterial;
+      const want = hot ? 0.16 : 0.04;
+      hm.opacity += (want - hm.opacity) * Math.min(1, dt * 3);
+    }
     // keep the belt clear of the planets at any planetScale: shrink the whole
     // ring inward if Jupiter's *visual* radius would otherwise reach it
     {
@@ -4054,6 +4118,23 @@ export class SolarEngine {
       el.style.transform = `translate(-50%,-140%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
       const a = THREE.MathUtils.clamp(1.4 - dist / 160, 0.15, 0.9);
       el.style.opacity = a.toFixed(2);
+    }
+    // heliopause label sits on the bubble's crown; only meaningful zoomed out
+    if (this.heliopause && this.helioLabel) {
+      const el = this.helioLabel;
+      if (this.galaxy || this.gxTrans || this.globe || !this.heliopause.visible) { el.style.opacity = '0'; }
+      else {
+        v.set(0, 118, 0);
+        const dist = v.distanceTo(this.camera.position);
+        v.project(this.camera);
+        if (v.z > 1 || v.z < -1) { el.style.opacity = '0'; }
+        else {
+          const x = (v.x * 0.5 + 0.5) * w;
+          const y = (-v.y * 0.5 + 0.5) * h;
+          el.style.transform = `translate(-50%,-140%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+          el.style.opacity = THREE.MathUtils.clamp((dist - 150) / 160, 0, 0.7).toFixed(2);
+        }
+      }
     }
     // Lagrange-point labels ride their markers
     if (this.lagrangeGroup && this.lagLabels.length > 0) {
