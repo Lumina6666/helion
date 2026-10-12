@@ -54,7 +54,19 @@ export default function App() {
   const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null, probe: null, mission: null });
   const [dossierOpen, setDossierOpen] = useState(true);
   const [hudOn, setHudOn] = useState(true);
-  const [deckOn, setDeckOn] = useState(() => { try { return localStorage.getItem('helion.deck') !== '0'; } catch { return true; } });
+  const [deckOn, setDeckOn] = useState(() => {
+    try {
+      const stored = localStorage.getItem('helion.deck');
+      if (stored !== null) return stored !== '0';
+    } catch { /* private mode */ }
+    return window.innerWidth >= 900; // phones start with a clean sky
+  });
+  useEffect(() => {
+    // body class mirrors deck state so CSS can float chips/labels above the sheet
+    document.body.classList.toggle('deck-on', deckOn);
+    return () => document.body.classList.remove('deck-on');
+  }, [deckOn]);
+
   const toggleDeck = () => setDeckOn(v => { const n = !v; try { localStorage.setItem('helion.deck', n ? '1' : '0'); } catch { /* private mode */ } return n; });
   const [paramsOpen, setParamsOpen] = useState(false);
   const [miniOpen, setMiniOpen] = useState(false);
@@ -220,6 +232,18 @@ export default function App() {
   const eng = () => engineRef.current;
   const p = snap?.params ?? { speed: 1, orbitOpacity: 0.55, planetScale: 1, starfield: 0.9 };
   const dossier = focusId !== 'sun' ? DOSSIER[focusId] : undefined;
+  useEffect(() => {
+    // dossier occupies the top card zone on phones — telemetry steps aside
+    document.body.classList.toggle('dossier-on', !!(dossierOpen && dossier));
+    return () => document.body.classList.remove('dossier-on');
+  }, [dossierOpen, dossier]);
+  useEffect(() => {
+    // big floating panels (time/params/tonight/expert log) take over the top
+    // zone on phones — the dossier steps aside to avoid stacked overlap
+    const on = timeOpen || paramsOpen || tonightOpen || !!snap?.expert;
+    document.body.classList.toggle('panel-on', on);
+    return () => document.body.classList.remove('panel-on');
+  }, [timeOpen, paramsOpen, tonightOpen, snap?.expert]);
   const jdNow = BASE_JD + tel.simDays;
   const range = dossier ? rangeFromEarth(focusId, jdNow) : null;
   const rangeSpark = useMemo(

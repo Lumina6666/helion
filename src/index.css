@@ -1235,3 +1235,67 @@ body { position: fixed; inset: 0; }
   }
   #gxfocus-card .gxf-desc { display: none; } /* chip mode: name + exit only */
 }
+
+/* ============================== mobile (phone) layout ==============================
+   ≤760px: deck becomes a bottom sheet, dossier a top card, every floating
+   panel goes full-width with momentum scroll, touch targets ≥40px, safe-area
+   aware. Deck state is mirrored on <body class="deck-on"> so the chips strip
+   can lift clear of the open sheet. */
+@media (max-width: 760px) {
+  /* flight deck → bottom sheet */
+  #deck {
+    left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    width: auto; max-height: 42vh; overflow-y: auto;
+    padding: 12px 12px 10px;
+  }
+  #deck.tucked { transform: translateY(calc(100% + 24px)); opacity: 0; }
+  #deck-hint { display: none; } /* keyboard cheat-sheet is meaningless on touch */
+  #deck-handle { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: 12px; }
+
+  /* dossier → top card; capped so it never reaches the chips strip */
+  #dossier {
+    top: 92px; left: 10px; right: 10px; width: auto;
+    max-height: 36vh; overflow-y: auto;
+  }
+  /* telemetry steps aside while the dossier owns the top zone */
+  body.dossier-on #telemetry { display: none; }
+
+  /* moon chips → edge-to-edge scroll strip pinned above the deck zone */
+  #moon-chips {
+    left: 10px; right: 10px; transform: none;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    overflow-x: auto; scrollbar-width: none; max-width: none;
+  }
+  #moon-chips::-webkit-scrollbar { display: none; }
+  body.deck-on #moon-chips { bottom: calc(42vh + 22px + env(safe-area-inset-bottom, 0px)); }
+  .mc-chip { padding: 8px 12px; }
+
+  /* telemetry → under the title, out of the thumb zone */
+  #telemetry { top: 132px; bottom: auto; left: 12px; font-size: 8px; line-height: 1.7; }
+  #telemetry .k { min-width: 96px; }
+
+  /* galaxy bar + focus card stack above the home indicator */
+  #galaxybar { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); gap: 5px; padding: 6px 8px; }
+  #galaxybar .gb-title { display: none; }
+  #gxfocus-card { bottom: 132px; }
+
+  /* floating panels → full-width sheets with momentum scroll.
+     (#tonight stays a centered modal — its translate(-50%,-50%) conflicts
+      with edge-pinned left/right, and 100vw-32px already fits phones.) */
+  #params, #probepanel, #timepanel, #surfaceinfo, #eventlog {
+    left: 10px !important; right: 10px !important; width: auto !important;
+    max-height: 46vh; overflow-y: auto;
+  }
+  /* while one of those sheets owns the top zone, the dossier steps aside */
+  body.panel-on #dossier { display: none; }
+  #minipanel { bottom: calc(122px + env(safe-area-inset-bottom, 0px)); max-height: 48vh; overflow-y: auto; }
+  body.deck-on #minipanel { bottom: calc(42vh + 22px + env(safe-area-inset-bottom, 0px)); max-height: 30vh; } /* lift clear of the open sheet + stay below the clock block */
+
+  /* toast drops below the clock block */
+  #toast { top: 64px; font-size: 9px; letter-spacing: .14em; }
+
+  /* toast & corner brackets must not crowd the notch area */
+  #title-block { top: calc(14px + env(safe-area-inset-top, 0px)); }
+  #clock-block { top: calc(16px + env(safe-area-inset-top, 0px)); }
+}
+
