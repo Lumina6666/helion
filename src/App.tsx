@@ -4,6 +4,7 @@ import type { HudSnapshot, Telemetry, LogEntry } from './solar/engine';
 import { VIEWS, DOSSIER, PLANETS, DIST_AU, MOON_SYS, MOON_HOST, MOON_SPEC, MINI_GROUPS, NEW_MOON_JD, MISSIONS } from './solar/data';
 import { rangeFromEarth, rangeSeries, fmtLightTime } from './solar/range';
 import { CITIES, tonightReport, fmtLocalH, compass, magClass } from './solar/observe';
+import { ECLIPSES } from './solar/events';
 import { BASE_JD } from './solar/ephem';
 import { CONJ_PAIRS, OPP_PLANETS } from './solar/events';
 import type { AstroEvent } from './solar/events';
@@ -234,7 +235,8 @@ export default function App() {
   );
 
   // ---- time panel helpers
-  const evDesc = (ev: { type: string; a: string; b: string }): string => {
+  const evDesc = (ev: { type: string; a: string; b: string; info?: string; infoCn?: string }): string => {
+    if (ev.info) return lang === 'zh' ? ev.infoCn! : ev.info;
     const tpl = ev.type === 'opposition' ? t.evOpposition
       : ev.type === 'conjunction' ? t.evConjunction : t.evPerihelion;
     return tpl.replace('{a}', bodyName(ev.a, lang)).replace('{b}', bodyName(ev.b, lang));
@@ -443,6 +445,14 @@ export default function App() {
             <div className="d-row"><span>{t.tonightMoonAge}</span><span className="p-val">
               {tonight.moonAgeDays.toFixed(1)}{lang === 'zh' ? ' 天' : ' D'} · {Math.round(tonight.moonIllum * 100)}%
             </span></div>
+            {(() => {
+              const ec = ECLIPSES.find((e) => Math.abs(e.jd - jdNow) < 0.5);
+              return ec ? (
+                <div className="tn-eclipse">
+                  {lang === 'zh' ? `☾ 今晚：${ec.subtypeCn} · ${ec.regionCn}` : `☾ TONIGHT: ${ec.subtype} ${ec.kind.toUpperCase()} ECLIPSE · ${ec.region}`}
+                </div>
+              ) : null;
+            })()}
             {tonight.sights.map((sg) => {
               const spec = PLANETS.find((pl) => pl.id === sg.id);
               const cls = magClass(sg.mag, sg.id);

@@ -199,6 +199,7 @@ export interface Strings {
     galaxyOff: string;
     galPrep: string;
     moonSys: string;
+    eclipseGeo: string;
     galNoExp: string;
     galNoProbe: string;
     galReturning: string;
@@ -420,6 +421,7 @@ export const STR: Record<Lang, Strings> = {
       galaxyOn: 'GALAXY VIEW — SIM TIME FROZEN',
       galPrep: 'PLOTTING COURSE — COMPILING STAR CHARTS…',
       moonSys: 'MOON SYSTEM DEPLOYED — CLICK A MOON TO EXPLORE',
+      eclipseGeo: 'ECLIPSE SHADOW GEOMETRY — SCHEMATIC, TRUE PROPORTIONS',
       galaxyOff: 'BACK TO THE SOLAR SYSTEM — TIME RESUMED',
       galNoExp: 'N-BODY EXPERIMENT BLOCKED IN GALAXY VIEW',
       galNoProbe: 'GALAXY VIEW AND PROBE MODE ARE MUTUALLY EXCLUSIVE',
@@ -640,6 +642,7 @@ export const STR: Record<Lang, Strings> = {
       galaxyOn: '已进入银河视图 — 时间已冻结',
       galPrep: '航线计算中 — 正在编译星图…',
       moonSys: '卫星系统已展开 — 点击卫星继续探索',
+      eclipseGeo: '食·阴影几何演示 — 示意渲染，比例真实',
       galaxyOff: '已返回太阳系，时间恢复流动',
       galNoExp: '银河视图中无法启动 N 体实验',
       galNoProbe: '银河视图与探测器模式互斥',

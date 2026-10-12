@@ -20,8 +20,8 @@ import { Ambience } from './audio';
 import { STR } from './i18n';
 import type { Lang } from './i18n';
 import { BASE_JD, helioLonLat, helioState, halleyScenePos, VOYAGERS, voyagerAU, voyagerScenePos, ELEMENTS } from './ephem';
-import { listUpcoming, solveEvent } from './events';
-import type { AstroEvent, EventType } from './events';
+import { listUpcoming, solveEvent, activeEclipse } from './events';
+import type { AstroEvent, EclipseEvent, EventType } from './events';
 import {
   MU_SUN, KMS_TO_AUDAY, AUDAY_TO_KMS, PLANET_MU, PLANET_RADIUS_AU, FLYBY_THRESHOLD_AU,
   stepProbe, adaptiveDt, distToBody, relSpeedKms, bodyVelocity, auToScenePos, predictOrbit,
@@ -160,6 +160,8 @@ export class SolarEngine {
   private kuiper!: THREE.Group;
   private heliopause: THREE.Mesh | null = null;
   private helioLabel: HTMLElement | null = null;
+  private eclipseRig: THREE.Group | null = null;
+  private eclipseKey = '';
   private sun!: THREE.Mesh;
   private moonNode: PlanetNode | null = null;
   private hillOn = false;
@@ -730,6 +732,81 @@ export class SolarEngine {
     const speeds = [1.5, 4, 12];
     const i = speeds.indexOf(this.mission.speed);
     this.mission.speed = speeds[(i + 1) % speeds.length];
+  }
+
+  // ------------------------------------------------- eclipse shadow geometry
+  // Schematic but proportionally honest: the umbral cone length is the REAL
+  // cone length mapped into scene scale — a total eclipse's cone overshoots
+  // Earth, an annular one's falls short. That difference IS the astronomy.
+  private buildEclipseRig(ev: EclipseEvent) {
+    this.teardownEclipseRig();
+    const t = STR[this.lang];
+    const solar = ev.kind === 'solar';
+    const occ = this.planets.find(p => p.spec.id === (solar ? 'moon' : 'earth'));
+    if (!occ) return;
+    const occR = occ.spec.radius * this.params.planetScale;
+    const moonSceneDist = MOON_SCENE_R * 1; // 2.1 scene units
+    const scale = moonSceneDist / 384400;   // scene units per km at the Moon's orbit
+    const Lu = (ev.umbraKm ?? 375000) * scale;
+    const Lp = Lu * 1.35;
+    const rig = new THREE.Group();
+    // umbra: tapering to a point
+    const umbra = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0015, occR, Lu, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    umbra.geometry.translate(0, Lu / 2, 0);
+    rig.add(umbra);
+    // penumbra: widening at the Sun's angular radius (0.266°)
+    const penR = occR + Lp * Math.tan(0.266 * Math.PI / 180);
+    const pen = new THREE.Mesh(
+      new THREE.CylinderGeometry(penR, occR, Lp, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    pen.geometry.translate(0, Lp / 2, 0);
+    rig.add(pen);
+    // amber rim on the umbra so the cone reads against black space
+    const rim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0015, occR, Lu, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffbe64, transparent: true, opacity: 0.18, wireframe: true, depthWrite: false }),
+    );
+    rim.geometry.translate(0, Lu / 2, 0);
+    rig.add(rim);
+    this.scene.add(rig);
+    this.eclipseRig = rig;
+    this.eclipseKey = String(ev.jd);
+    this.toast(t.toast.eclipseGeo);
+  }
+
+  private teardownEclipseRig() {
+    if (!this.eclipseRig) return;
+    this.eclipseRig.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) (m.material as THREE.Material).dispose();
+    });
+    this.scene.remove(this.eclipseRig);
+    this.eclipseRig = null;
+    this.eclipseKey = '';
+  }
+
+  private updateEclipseRig() {
+    const jd = BASE_JD + this.simDays;
+    const ev = activeEclipse(jd);
+    if (!ev || this.galaxy || this.globe || this.surface) {
+      if (this.eclipseRig) this.teardownEclipseRig();
+      return;
+    }
+    if (!this.eclipseRig || this.eclipseKey !== String(ev.jd)) this.buildEclipseRig(ev);
+    if (!this.eclipseRig) return;
+    // aim: sun sits at the origin, shadow streams away from it
+    const solar = ev.kind === 'solar';
+    const occ = this.planets.find(p => p.spec.id === (solar ? 'moon' : 'earth'));
+    if (!occ) return;
+    const pos = occ.body.getWorldPosition(new THREE.Vector3());
+    const axis = pos.clone().normalize();
+    this.eclipseRig.position.copy(pos);
+    this.eclipseRig.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
   }
 
   private missionPos(m: NonNullable<SolarEngine['mission']>): THREE.Vector3 {
@@ -2405,6 +2482,7 @@ export class SolarEngine {
     this.belt.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
     this.kuiper.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.12, 0.32]));
     if (this.heliopause) pushO(this.heliopause.material as THREE.MeshBasicMaterial, [0.40, 0.58]);
+    if (this.eclipseRig) this.eclipseRig.traverse((o) => pushO((o as THREE.Mesh).material as THREE.Material | undefined, [0.10, 0.30]));
     if (this.sunGlow1) pushO(this.sunGlow1.material as THREE.Material, [0.20, 0.40]);
     if (this.sunGlow2) pushO(this.sunGlow2.material as THREE.Material, [0.22, 0.42]);
     // a farewell in distance order — the outer worlds leave first
@@ -2627,6 +2705,7 @@ export class SolarEngine {
     this.dimHidden.push(this.belt); this.belt.visible = false;
     this.dimHidden.push(this.kuiper); this.kuiper.visible = false;
     if (this.heliopause) { this.dimHidden.push(this.heliopause); this.heliopause.visible = false; }
+    if (this.eclipseRig) { this.dimHidden.push(this.eclipseRig); this.eclipseRig.visible = false; }
     if (this.halley) {
       this.dimHidden.push(this.halley.tail); this.halley.tail.visible = false;
       this.dimHidden.push(this.halley.trail); this.halley.trail.visible = false;
@@ -3885,6 +3964,7 @@ export class SolarEngine {
     this.sun.rotation.y += simDt * 0.02;
     this.belt.rotation.y += simDt * 0.012;
     this.kuiper.rotation.y += simDt * 0.004;
+    this.updateEclipseRig();
     // heliopause brightens while a Voyager holds the spotlight
     if (this.heliopause) {
       const hot = this.focus && (this.focus.spec.id === 'voyager1' || this.focus.spec.id === 'voyager2');
