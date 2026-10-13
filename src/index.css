@@ -1302,8 +1302,18 @@ body { position: fixed; inset: 0; }
   #telemetry .k { min-width: 96px; }
 
   /* galaxy bar + focus card stack above the home indicator */
-  #galaxybar { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); gap: 5px; padding: 6px 8px; }
+  /* galaxy bar → full-width single row; three buttons share the row evenly
+     (the ≤900px rule's flex-wrap:wrap is what stacked them into two rows) */
+  #galaxybar {
+    left: 10px; right: 10px; transform: none;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    gap: 5px; padding: 6px 8px; flex-wrap: nowrap;
+  }
+  #galaxybar .hbtn { flex: 1; text-align: center; padding: 8px 4px; }
   #galaxybar .gb-title { display: none; }
+  /* deck drawer open → galaxy bar steps aside (same yielding language as
+     telemetry/dossier); the deck's own 银河视图 button still exits */
+  body.deck-on #galaxybar { display: none; }
   #gxfocus-card { bottom: 132px; }
 
   /* floating panels → full-width sheets with momentum scroll.
