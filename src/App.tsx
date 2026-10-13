@@ -620,8 +620,8 @@ export default function App() {
       {dossier && dossierOpen && !tel.mission && (
         <div id="dossier" className={dossierFull ? 'ctl' : 'ctl mini'}>
           <div className="p-head">
-            <span className="p-title">{snap?.focusName} · {t.dossier}</span>
             <button className="hbtn d-fold" onClick={() => setDossierFull(v => !v)}>{dossierFull ? '▴' : '▾'}</button>
+            <span className="p-title">{snap?.focusName} · {t.dossier}</span>
             <button id="btn-reset" className="hbtn" onClick={() => setDossierOpen(false)}>{t.dossierClose}</button>
           </div>
           {/* collapsed summary strip (phones only — desktop CSS never shows it):

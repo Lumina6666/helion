@@ -812,7 +812,7 @@ body { position: fixed; inset: 0; }
 }
 /* phone-only affordances — the desktop dossier is always fully expanded */
 #dossier .d-mini { display: none; }
-#dossier .d-fold { display: none; margin-left: auto; }
+#dossier .d-fold { display: none; }
 #dossier .d-block { margin-bottom: 10px; }
 #dossier .d-meta {
   display: flex;
@@ -1260,7 +1260,16 @@ body { position: fixed; inset: 0; }
     max-height: 36vh; overflow-y: auto;
   }
   /* collapsed (.mini): summary strip only — the sky keeps ~92% of the screen */
-  #dossier .d-fold { display: inline-block; }
+  /* fold toggle: petite square on the far LEFT of the head, clear of 关闭 */
+  #dossier .p-head { justify-content: flex-start; }
+  #dossier .p-head .p-title { flex: 1; }
+  #dossier .d-fold {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none; width: 20px; height: 20px; padding: 0; margin: 0 9px 0 0;
+    font-size: 9px; line-height: 1;
+    border: 1px solid rgba(127, 220, 255, 0.35); border-radius: 2px;
+    color: var(--cyan); background: rgba(10, 22, 36, 0.5);
+  }
   #dossier.mini { max-height: none; overflow: visible; }
   #dossier.mini > *:not(.p-head):not(.d-mini) { display: none; }
   #dossier.mini .d-mini {
