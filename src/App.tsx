@@ -53,6 +53,7 @@ export default function App() {
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
   const [tel, setTel] = useState<Telemetry>({ fps: 0, distAU: 0, flow: 0, simDays: 0, focusAU: null, probe: null, mission: null });
   const [dossierOpen, setDossierOpen] = useState(true);
+  const [dossierFull, setDossierFull] = useState(() => window.innerWidth >= 900); // phones: summary strip first
   const [hudOn, setHudOn] = useState(true);
   const [deckOn, setDeckOn] = useState(() => {
     try {
@@ -226,7 +227,7 @@ export default function App() {
   // auto-open dossier when a new target is acquired
   const focusId = snap?.focusId ?? 'sun';
   useEffect(() => {
-    if (focusId !== 'sun') setDossierOpen(true);
+    if (focusId !== 'sun') { setDossierOpen(true); setDossierFull(window.innerWidth >= 900); }
   }, [focusId]);
 
   const eng = () => engineRef.current;
@@ -617,11 +618,23 @@ export default function App() {
       </div>
 
       {dossier && dossierOpen && !tel.mission && (
-        <div id="dossier" className="ctl">
+        <div id="dossier" className={dossierFull ? 'ctl' : 'ctl mini'}>
           <div className="p-head">
             <span className="p-title">{snap?.focusName} · {t.dossier}</span>
+            <button className="hbtn d-fold" onClick={() => setDossierFull(v => !v)}>{dossierFull ? '▴' : '▾'}</button>
             <button id="btn-reset" className="hbtn" onClick={() => setDossierOpen(false)}>{t.dossierClose}</button>
           </div>
+          {/* collapsed summary strip (phones only — desktop CSS never shows it):
+              live range + one-way light time keep ticking under the clock */}
+          <button className="d-mini" onClick={() => setDossierFull(true)}>
+            <span className="dm-type">{lang === 'zh' ? dossier.typeCn : dossier.type}</span>
+            {range && (
+              <span className="dm-live">
+                {range.au < 0.01 ? range.au.toExponential(2) : range.au.toFixed(range.au < 1 ? 3 : 2)} AU · {fmtLightTime(range.au, lang === 'zh')}
+              </span>
+            )}
+            <span className="dm-caret">▾</span>
+          </button>
           <div className="d-type">{lang === 'zh' ? dossier.typeCn : dossier.type}</div>
           {dossier.diameterKm != null && (
             <div className="d-block">

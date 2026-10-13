@@ -810,6 +810,9 @@ body { position: fixed; inset: 0; }
   color: var(--amber);
   margin-bottom: 10px;
 }
+/* phone-only affordances — the desktop dossier is always fully expanded */
+#dossier .d-mini { display: none; }
+#dossier .d-fold { display: none; margin-left: auto; }
 #dossier .d-block { margin-bottom: 10px; }
 #dossier .d-meta {
   display: flex;
@@ -1256,6 +1259,19 @@ body { position: fixed; inset: 0; }
     top: 92px; left: 10px; right: 10px; width: auto;
     max-height: 36vh; overflow-y: auto;
   }
+  /* collapsed (.mini): summary strip only — the sky keeps ~92% of the screen */
+  #dossier .d-fold { display: inline-block; }
+  #dossier.mini { max-height: none; overflow: visible; }
+  #dossier.mini > *:not(.p-head):not(.d-mini) { display: none; }
+  #dossier.mini .d-mini {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    margin-top: 8px; padding: 8px 2px 0;
+    border: none; border-top: 1px solid rgba(127, 220, 255, 0.18);
+    background: none; cursor: pointer; text-align: left;
+  }
+  #dossier .d-mini .dm-type { color: var(--amber); font-size: 8.5px; letter-spacing: .3em; }
+  #dossier .d-mini .dm-live { color: var(--cyan); font-size: 9px; letter-spacing: .12em; flex: 1; text-align: right; }
+  #dossier .d-mini .dm-caret { color: var(--cyan-dim); font-size: 10px; }
   /* telemetry steps aside while the dossier owns the top zone */
   body.dossier-on #telemetry { display: none; }
 
