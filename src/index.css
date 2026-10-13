@@ -1252,7 +1252,10 @@ body { position: fixed; inset: 0; }
   }
   #deck.tucked { transform: translateY(calc(100% + 24px)); opacity: 0; }
   #deck-hint { display: none; } /* keyboard cheat-sheet is meaningless on touch */
-  #deck-handle { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: 12px; }
+  /* deck pull-tab → flush edge tab: vertically centered, zero gap to the
+     right bezel (base rule keeps top:50% + translateY(-50%); the bottom
+     offset was dead code — top wins when both are set) */
+  #deck-handle { right: 0; bottom: auto; width: 26px; height: 104px; border-radius: 6px 0 0 6px; }
 
   /* dossier → top card; capped so it never reaches the chips strip */
   #dossier {
