@@ -1,5 +1,5 @@
 {
-  "name": "my-app",
+  "name": "helion",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -78,5 +78,6 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.6"
-  }
+  },
+  "description": "HELION — a real-time Solar System observatory in the browser (React 19 + Three.js)"
 }
