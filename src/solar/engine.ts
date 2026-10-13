@@ -196,7 +196,7 @@ export class SolarEngine {
   private galaxyLabelsOn = true;
   private galaxySun: THREE.Sprite | null = null;
   private gxTrans: {
-    dir: 'toGalaxy' | 'toSolar'; t: number; dur: number;
+    dir: 'toGalaxy' | 'toSolar' | 'diveInner'; t: number; dur: number;
     fromPos: THREE.Vector3; midPos: THREE.Vector3; arrPos: THREE.Vector3;
     fromTgt: THREE.Vector3;
     swapped: boolean; whooshed: boolean; boomed: boolean;
@@ -2639,6 +2639,44 @@ export class SolarEngine {
     this.emitSnapshot();
   }
 
+  // deck "inner system" button — the cinematic dive from wherever you are:
+  // galaxy view delegates to the full voyage home; anywhere in the solar
+  // system it is a pure camera dive (no scene swap, nothing dissolves) that
+  // swings past the Sun's shoulder and settles into the VIEWS[3] framing.
+  diveToInnerSystem() {
+    if (this.gxTrans || this.gxPrep) return;
+    if (this.galaxy) { this.returnToSolarSystem(true); return; }
+    if (this.surface) this.exitSurfaceView(true);
+    this.setCine(false);
+    this.focus = null;
+    this.tween = null;
+    this.controls.enabled = false;
+    this.ensureWarpCanvas();
+    this.ensureDustShell();
+    this.savedFov = this.camera.fov;
+    const v0 = VIEWS[3];
+    const arrPos = new THREE.Vector3(
+      Math.cos(v0.elevation * DEG) * Math.cos(v0.azimuth * DEG),
+      Math.sin(v0.elevation * DEG),
+      Math.cos(v0.elevation * DEG) * Math.sin(v0.azimuth * DEG),
+    ).multiplyScalar(v0.distance);
+    const fromPos = this.camera.position.clone();
+    if (fromPos.lengthSq() < 1e-6) fromPos.set(36, 40, 47);
+    // same sun-hugging control point as the galaxy voyage — peak proximity
+    // at mid-flight, the star rushes past, then the inner worlds open up
+    const midPos = fromPos.clone().normalize().multiplyScalar(10);
+    midPos.y += 4;
+    this.gxTrans = {
+      dir: 'diveInner', t: 0, dur: 10.5,
+      fromPos, midPos, arrPos,
+      fromTgt: this.controls.target.clone(),
+      swapped: false, whooshed: false, boomed: false,
+      inner: true,
+    };
+    this.toast(STR[this.lang].toast.galDiving);
+    this.emitSnapshot();
+  }
+
   private applyGalaxyScene(on: boolean) {
     const g = this.galaxy!;
     if (on) {
@@ -2680,6 +2718,7 @@ export class SolarEngine {
     fx.t = Math.min(1, fx.t + dt / fx.dur);
     const t = fx.t;
     const toGal = fx.dir === 'toGalaxy';
+    const dive = fx.dir === 'diveInner'; // solar-internal camera ride: no swap, no dissolve
     const ssw = (a: number, b: number) => {
       const k = THREE.MathUtils.clamp((t - a) / (b - a), 0, 1);
       return k * k * (3 - 2 * k);
@@ -2687,17 +2726,20 @@ export class SolarEngine {
     const m = (win: [number, number]) => (toGal ? ssw(win[0], win[1]) : 1 - ssw(1 - win[1], 1 - win[0]));
 
     // scene crossfade — the solar system dissolves, the galaxy blooms
-    for (const f of this.gxFadeO) f.mat.opacity = f.base * (1 - m(f.win));
-    for (const f of this.gxFadeS) f.obj.scale.setScalar(f.base * Math.max(0.01, 1 - m(f.win)));
-    for (const L of this.gxLayers) {
-      const k = m(L.win);
-      L.mat.opacity = L.base * k;
-      if (L.u) L.u.value = k;
+    // (skipped on diveInner: the solar system IS the destination, it stays whole)
+    if (!dive) {
+      for (const f of this.gxFadeO) f.mat.opacity = f.base * (1 - m(f.win));
+      for (const f of this.gxFadeS) f.obj.scale.setScalar(f.base * Math.max(0.01, 1 - m(f.win)));
+      for (const L of this.gxLayers) {
+        const k = m(L.win);
+        L.mat.opacity = L.base * k;
+        if (L.u) L.u.value = k;
+      }
+      // …and the Sun itself becomes the star you keep watching
+      this.gxSunK = Math.max(0.02, 1 - m(GX_SUN_WIN));
+      this.sun.scale.setScalar(this.gxSunK);
+      this.galaxyGroup!.scale.setScalar(toGal ? 1.08 - 0.08 * ssw(0.15, 1) : 1 + 0.06 * ssw(0, 0.5));
     }
-    // …and the Sun itself becomes the star you keep watching
-    this.gxSunK = Math.max(0.02, 1 - m(GX_SUN_WIN));
-    this.sun.scale.setScalar(this.gxSunK);
-    this.galaxyGroup!.scale.setScalar(toGal ? 1.08 - 0.08 * ssw(0.15, 1) : 1 + 0.06 * ssw(0, 0.5));
 
     // camera: one continuous bezier ride, gaze never leaves the anchor
     const e = easeInOut(t);
@@ -2710,7 +2752,8 @@ export class SolarEngine {
     this.controls.target.lerpVectors(fx.fromTgt, GX_ORIGIN, ssw(0, 0.25));
 
     // the crossing: bookkeeping swaps while the eye is at peak exposure
-    if (t >= 0.5 && !fx.swapped) {
+    // (diveInner never crosses — both ends of the bezier live in the same scene)
+    if (!dive && t >= 0.5 && !fx.swapped) {
       fx.swapped = true;
       this.gxFlash = 1;
       if (toGal) {
@@ -2731,7 +2774,7 @@ export class SolarEngine {
     // cinematic dressing — a gentle fov kick + a whisper of roll at peak zoom
     const bump = ssw(0.3, 0.55) * (1 - ssw(0.55, 0.8));
     this.warpIntensity = bump;
-    this.camera.fov = this.savedFov + bump * (fx.inner ? 13 : 8);
+    this.camera.fov = this.savedFov + bump * (fx.inner || dive ? 13 : 8);
     this.camera.updateProjectionMatrix();
     const roll = bump * 0.03 * (toGal ? 1 : -1);
     this.camera.up.set(Math.sin(roll), Math.cos(roll), 0);
@@ -2752,7 +2795,7 @@ export class SolarEngine {
       for (const f of this.gxFadeO) f.mat.opacity = f.base;
       for (const f of this.gxFadeS) f.obj.scale.setScalar(f.base);
       if (toGal) for (const L of this.gxLayers) { L.mat.opacity = L.base; if (L.u) L.u.value = 1; }
-      else this.toast(fx.inner ? STR[this.lang].toast.galArriveInner : STR[this.lang].toast.galaxyOff);
+      else this.toast(fx.inner || dive ? STR[this.lang].toast.galArriveInner : STR[this.lang].toast.galaxyOff);
       this.emitSnapshot();
     }
   }

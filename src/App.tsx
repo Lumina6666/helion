@@ -192,7 +192,7 @@ export default function App() {
         return;
       }
       const k = e.key.toLowerCase();
-      if (k >= '1' && k <= '4') { eng.setView(Number(k) - 1); return; }
+      if (k >= '1' && k <= '4') { const vi = Number(k) - 1; if (vi === 3) eng.diveToInnerSystem(); else eng.setView(vi); return; }
       switch (k) {
         case 'c': eng.toggleCine(); break;
         case 'r': eng.toggleOrbit(); break;
@@ -356,7 +356,7 @@ export default function App() {
           </button>
           <div className="grid2">
             {VIEWS.map((v, i) => (
-              <button key={v.name} className="hbtn" onClick={() => eng()?.setView(i)}>{lang === 'zh' ? v.nameCn : v.name}</button>
+              <button key={v.name} className="hbtn" onClick={() => (i === 3 ? eng()?.diveToInnerSystem() : eng()?.setView(i))}>{lang === 'zh' ? v.nameCn : v.name}</button>
             ))}
           </div>
           <div className="grid4">
@@ -551,7 +551,6 @@ export default function App() {
             <span className="gb-title">◌ {t.galaxyTitle}</span>
             <button className={`hbtn ${snap.galaxyLabels ? 'active' : ''}`} onClick={() => eng()?.toggleGalaxyLabels()}>{t.galaxyLabels}</button>
             <button className="hbtn" onClick={() => { if (eng()?.toggleGalaxyObserve()) setHudOn(false); }}>{t.galaxyObserve}</button>
-            <button className="hbtn gb-dive" onClick={() => eng()?.returnToSolarSystem(true)}>{t.galDiveInner}</button>
             <button className="hbtn gb-exit" onClick={() => eng()?.exitGalaxyView()}>{t.galaxyExit}</button>
           </div>
           {snap.gxFocus && (

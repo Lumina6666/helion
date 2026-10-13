@@ -64,7 +64,6 @@ export interface Strings {
   galaxyCap: string;
   galaxyLabels: string;
   galaxyExit: string;
-  galDiveInner: string;
   galaxyObserve: string;
   galaxyObserveExit: string;
   gxFocusExit: string;
@@ -296,7 +295,6 @@ export const STR: Record<Lang, Strings> = {
     galaxyCap: 'THE MILKY WAY · ~100,000 LIGHT-YEARS ACROSS',
     galaxyLabels: 'LABELS',
     galaxyExit: 'EXIT GALAXY VIEW',
-    galDiveInner: '☄ DIVE TO INNER SYSTEM',
     galaxyObserve: 'OBSERVE',
     galaxyObserveExit: 'EXIT OBSERVE · ESC',
     gxFocusExit: 'EXIT FOCUS',
@@ -526,7 +524,6 @@ export const STR: Record<Lang, Strings> = {
     galaxyCap: '银河系 · 直径约 100,000 光年',
     galaxyLabels: '标注',
     galaxyExit: '退出银河视图',
-    galDiveInner: '☄ 潜入内太阳系',
     galaxyObserve: '观赏',
     galaxyObserveExit: '退出观赏 · Esc',
     gxFocusExit: '退出聚焦',
